@@ -50,9 +50,10 @@ public:
   double xAtZ(double z) const { return m_x0 + m_slopeX*z; }//just straight lines
   double yAtZ(double z) const { return m_y0 + m_slopeY*z; }
   //old momentum for now
-  double moment()  const {return ( (*m_momPar_old)[0] +    
-                                        (*m_momPar_old)[1] * m_seed_state->tx() * m_seed_state->tx() +
-                                        (*m_momPar_old)[2] * m_seed_state->ty() * m_seed_state->ty() ) / 
+  double moment()  const {
+    return ( (*m_momPar_old)[0] +    
+             (*m_momPar_old)[1] * m_seed_state->tx() * m_seed_state->tx() +
+             (*m_momPar_old)[2] * m_seed_state->ty() * m_seed_state->ty() ) / 
       ( m_seed_state->tx() - m_slopeX ) * m_magnetScale;
   }
   double chisq(){return m_chi2;}  

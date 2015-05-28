@@ -67,7 +67,7 @@ public:
                             std::vector<LHCb::LHCbID> x2ids,
                             LHCb::Track * track) = 0;
   virtual void PrintHitTable(PrUTHit* hit) = 0;
-  virtual void PrintHitTableShort(PrUTHit* hit) = 0;
+  virtual void PrintHitTableShort(const PrUTHit* hit) = 0;
 
 
 protected:

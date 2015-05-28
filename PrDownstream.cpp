@@ -271,7 +271,7 @@ StatusCode PrDownstream::execute() {
           if(m_printVerbose)m_debugTool->printTSeedInfo(tr);
           else{m_debugTool->printTSeedInfoShort(tr);}
         }
-        
+        m_debugTool->printTSeedInfoShort(tr);
         m_debugTool->recordStepInProcess("reconstructible_asDown",
                                          m_debugTool->isTrackReconstructible(*tr));  
       }
@@ -287,21 +287,24 @@ StatusCode PrDownstream::execute() {
       PrDownTrack2 track(tr,m_zMagnetParams,m_momentumParams,magScaleFactor*(-1));
       
 
-      if(m_legacy) {
-        //Y. Xie: get rid of particles from beampipe
-        /*
-        const double xAtUT = track.xAtZ( m_zUTa );
-        const double yAtUT = track.yAtZ( m_zUTa );
-        if( m_minUTx > fabs(xAtUT) &&
-        m_minUTy > fabs(yAtUT)       ) continue;*/
-      }
+      // if(m_legacy) {
+      //   //Y. Xie: get rid of particles from beampipe
+      //   /*
+      //   const double xAtUT = track.xAtZ( m_zUTa );
+      //   const double yAtUT = track.yAtZ( m_zUTa );
+      //   if( m_minUTx > fabs(xAtUT) &&
+      //   m_minUTy > fabs(yAtUT)       ) continue;*/
+      // }
 
       const double deltaP = track.moment() * track.state()->qOverP() - 1.;
       
       if ( m_printing ) {
           for ( auto itH : utCoords ){
               PrUTHit* hit = itH;
-              if (hit->hit()->ignore()) continue;
+              if (hit->hit()->ignore()){
+                info()<<"ignoring hit "<<hit->hit()->lhcbID().lhcbID()<<endmsg;
+                continue;
+              }
               const double yTrack = track.yAtZ( 0. );
               const double tyTr   = track.slopeY();
               updateUTHitForTrack( hit, yTrack, tyTr );
@@ -322,10 +325,13 @@ StatusCode PrDownstream::execute() {
           info()<<"done calling debugutclusterontrack"<<endmsg;
       }
       
-
+      
       // check for compatible momentum
       if ( m_deltaP < fabs(deltaP) ) {
-          if ( m_printing ) info() << "   --- deltaP " << deltaP << " -- rejected" << endmsg;
+        /*if ( m_printing )*/ info() << "   --- deltaP " << deltaP << " -- rejected" << endmsg;
+        info()<<"m_deltaP = "<<m_deltaP<<endmsg;
+        info()<<"track momentum = "<<track.moment()<<endmsg;
+        
           if ( !m_magnetOff ) continue;
           continue;
       }
@@ -359,7 +365,6 @@ StatusCode PrDownstream::execute() {
           if(m_printVerbose) m_debugTool->PrintHitTable(hit);
           else{m_debugTool->PrintHitTableShort(hit);}
         }
-        
       }
       
       //now the preselection is there, we can print everything
@@ -383,10 +388,16 @@ StatusCode PrDownstream::execute() {
               //==============================================================
               // Try to find a candidate: X first, then UV.
               //==============================================================
-
+            
               for ( itH = m_xHits.begin(); m_xHits.end() != itH; itH++ ) {
                   PrUTHit* myHit = *itH;
-                  if ( myHit->hit()->testStatus( Tf::HitBase::UsedByPatDownstream ) ) continue;
+                  if ( myHit->hit()->testStatus( Tf::HitBase::UsedByPatDownstream ) ){ 
+                    info()<<"rejecting used hit already "<<myHit->hit()->lhcbID().lhcbID()<<endmsg;
+                    continue;
+                  }
+                  
+                  info()<<"selected hit to start "<<myHit->hit()->lhcbID().lhcbID()<<endmsg;
+                  
                   double meanZ = myHit->z();
                   double posX  = myHit->x( );
                   int myPlane  = myHit->planeCode();
@@ -395,7 +406,9 @@ StatusCode PrDownstream::execute() {
 
                   // Create track estimate with one x hit
                   //double slopeX = (track.xMagnet() - posX + track.sagitta( meanZ)) / (track.zMagnet() - meanZ);
+                  //info()<<"Old Slope X from one hit= "<<(track.xMagnet() - posX + track.sagitta( meanZ)) / (track.zMagnet() - meanZ)<<endmsg;
                   double slopeX = (track.xMagnet()- posX)/(track.zMagnet() - meanZ);
+                  info()<<"new slope x = "<<slopeX<<endmsg;
                   track.setSlopeX( slopeX );
                   
                   if ( m_printing ) {
@@ -408,6 +421,7 @@ StatusCode PrDownstream::execute() {
                   }        
 
                   // Fit x projection
+                  info()<<"Calling find matching hits"<<endmsg;
                   findMatchingHits( MatchingXHits, track, myPlane );
                   if(m_withDebugTool){
                     std::vector<int> xids,uvids;
@@ -418,6 +432,7 @@ StatusCode PrDownstream::execute() {
                   }
                   
                   //fitXProjection( MatchingXHits, track, myHit );
+                  info()<<"fit x projection 2 called"<<endmsg;
                   fitXProjection2( MatchingXHits, track, myHit );
                   if(m_withDebugTool){
                     std::vector<int> xids,uvids;
@@ -428,6 +443,7 @@ StatusCode PrDownstream::execute() {
                   }
                   // Fit 3D track
                   //addUVHits( track );
+                  info()<<"adding uv hits"<<endmsg;
                   addUVHits2( track );
                   if(m_withDebugTool){
                     std::vector<int> ids;
@@ -440,6 +456,7 @@ StatusCode PrDownstream::execute() {
                       if ( m_printing ) info() << " === not enough hits" << endmsg;
                       continue;
                   }
+                  info()<<"calling fit and remove"<<endmsg;
                   fitAndRemove2( track );
                   if(m_withDebugTool){
                     std::vector<int> ids;
@@ -449,9 +466,10 @@ StatusCode PrDownstream::execute() {
                   }
                   //fitAndRemove( track );
                   //here now for update
-
+                  info()<<"calling accept candidate"<<endmsg;
                   // Check if candidate is better than the old one
                   if ( !acceptCandidate( track, bestTrack, maxPoints, minChisq ) ) continue;
+                  info()<<"candidate accepted"<<endmsg;
                   if(m_withDebugTool){
                     std::vector<int> ids;
                     for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
@@ -688,7 +706,7 @@ StatusCode PrDownstream::execute() {
       m_timerTool->stop( m_downTime );
   }
 
-
+  
   return StatusCode::SUCCESS;
 }
 
@@ -706,95 +724,95 @@ StatusCode PrDownstream::finalize() {
 //  Cleanup already used T-Seeds - New implementation
 //=========================================================================
 void PrDownstream::prepareSeedsNew(LHCb::Tracks* inTracks, std::vector<LHCb::Track*>& myInTracks){
-    LHCb::Tracks* match = getIfExists<LHCb::Tracks>( m_matchLocation );
-    LHCb::Tracks* forward = getIfExists<LHCb::Tracks>( m_forwardLocation );
-    if ( NULL != match ) {
-        if (!m_removeUsed) {
-            myInTracks.insert( myInTracks.end(), inTracks->begin(), inTracks->end() );
-        } else {
-            if (m_printing) debug()<<"Remove seeds and ut hits from Match tracks"<<endmsg;
-            for ( LHCb::Tracks::const_iterator itT = inTracks->begin();
-                    inTracks->end() != itT; itT++ ) {
-                LHCb::Track* tr = (*itT);
-                bool forwd = true;
+  LHCb::Tracks* match = getIfExists<LHCb::Tracks>( m_matchLocation );
+  LHCb::Tracks* forward = getIfExists<LHCb::Tracks>( m_forwardLocation );
+  if ( NULL != match ) {
+    if (!m_removeUsed) {
+      myInTracks.insert( myInTracks.end(), inTracks->begin(), inTracks->end() );
+    } else {
+      if (m_printing) debug()<<"Remove seeds and ut hits from Match tracks"<<endmsg;
+      for ( LHCb::Tracks::const_iterator itT = inTracks->begin();
+            inTracks->end() != itT; itT++ ) {
+        LHCb::Track* tr = (*itT);
+        bool forwd = true;
                 
-                for( auto forwardTr : *forward ) {
-                    int ft1 = 0;
-                    int ft2 = 0;
-                    int ftc = 0;
-                    bool hasUT = false;
+        for( auto forwardTr : *forward ) {
+          int ft1 = 0;
+          int ft2 = 0;
+          int ftc = 0;
+          bool hasUT = false;
 
-                    for (std::vector< LHCb::LHCbID>::const_iterator id1 = forwardTr->lhcbIDs().begin();
-                            forwardTr->lhcbIDs().end() != id1; ++id1 ) {
-                        if(!(*id1).isFT()) continue;
-                        for (std::vector< LHCb::LHCbID>::const_iterator id2 = tr->lhcbIDs().begin();
-                                tr->lhcbIDs().end() != id2; ++id2 ) {
-                            if(!(*id2).isFT()) continue;
-                            if((*id1)==(*id2)) ftc++;
-                        }
-                    }
-                    for (std::vector< LHCb::LHCbID>::const_iterator id1 = forwardTr->lhcbIDs().begin();
-                            forwardTr->lhcbIDs().end() != id1; ++id1 ) {
-                        if((*id1).isFT()) ft1++;
-                        if((*id1).isUT()) hasUT=true;
-                    }
-                    for (std::vector< LHCb::LHCbID>::const_iterator id2 = tr->lhcbIDs().begin();
-                            tr->lhcbIDs().end() != id2; ++id2 ) {
-                        if((*id2).isFT()) ft2++;
-                    }
+          for (std::vector< LHCb::LHCbID>::const_iterator id1 = forwardTr->lhcbIDs().begin();
+               forwardTr->lhcbIDs().end() != id1; ++id1 ) {
+            if(!(*id1).isFT()) continue;
+            for (std::vector< LHCb::LHCbID>::const_iterator id2 = tr->lhcbIDs().begin();
+                 tr->lhcbIDs().end() != id2; ++id2 ) {
+              if(!(*id2).isFT()) continue;
+              if((*id1)==(*id2)) ftc++;
+            }
+          }
+          for (std::vector< LHCb::LHCbID>::const_iterator id1 = forwardTr->lhcbIDs().begin();
+               forwardTr->lhcbIDs().end() != id1; ++id1 ) {
+            if((*id1).isFT()) ft1++;
+            if((*id1).isUT()) hasUT=true;
+          }
+          for (std::vector< LHCb::LHCbID>::const_iterator id2 = tr->lhcbIDs().begin();
+               tr->lhcbIDs().end() != id2; ++id2 ) {
+            if((*id2).isFT()) ft2++;
+          }
                     
-                    if(ft1!=0 && ft2!=0 && (double)ftc/(double)std::min(ft1, ft2)>=1 && forwardTr->chi2PerDoF() < m_longChi2 && hasUT) {
-                        forwd = false;
-                        tagUsedUT( forwardTr );
-                    }
-                    if ( !forwd ) break;
-                }
+          if(ft1!=0 && ft2!=0 && (double)ftc/(double)std::min(ft1, ft2)>=1 && forwardTr->chi2PerDoF() < m_longChi2 && hasUT) {
+            forwd = false;
+            tagUsedUT( forwardTr );
+          }
+          if ( !forwd ) break;
+        }
 
-                //TODO: Keep this in case we want to use both information from the Match and the Forward in the offline tracking
-                /*
-                bool mat =true;
-                if ( m_printing ) debug() << "Seed " << tr->key();
-                for( auto matchTr : *match ) {
-                    const SmartRefVector<LHCb::Track>& ancestors = matchTr->ancestors();
-                    for ( SmartRefVector<LHCb::Track>::const_iterator itA = ancestors.begin();
-                            ancestors.end() != itA; ++itA ) {
-                        const LHCb::Track* pt = (*itA);
-                        if ( tr == pt ) {
-                            if ( m_printing ) debug() << " is used in match " << matchTr->key();
-                            if ( m_removeAll || (matchTr->chi2PerDoF() < m_longChi2 && !forwd) ) {
-                                if ( m_printing ) debug() << " good longtrack " << matchTr->key()<<endmsg;
-                                mat = false;
-                                tagUsedUT( matchTr );
-                                break;
-                            }
-                            break;
-                        }
-                    }
-                    if ( !mat ) break;
-                }
+        //TODO: Keep this in case we want to use both information from the Match and the Forward in the offline tracking
+        /*
+          bool mat =true;
+          if ( m_printing ) debug() << "Seed " << tr->key();
+          for( auto matchTr : *match ) {
+          const SmartRefVector<LHCb::Track>& ancestors = matchTr->ancestors();
+          for ( SmartRefVector<LHCb::Track>::const_iterator itA = ancestors.begin();
+          ancestors.end() != itA; ++itA ) {
+          const LHCb::Track* pt = (*itA);
+          if ( tr == pt ) {
+          if ( m_printing ) debug() << " is used in match " << matchTr->key();
+          if ( m_removeAll || (matchTr->chi2PerDoF() < m_longChi2 && !forwd) ) {
+          if ( m_printing ) debug() << " good longtrack " << matchTr->key()<<endmsg;
+          mat = false;
+          tagUsedUT( matchTr );
+          break;
+          }
+          break;
+          }
+          }
+          if ( !mat ) break;
+          }
 
-                if (mat) {
-                    myInTracks.push_back( tr );
-                    if ( m_printing ) debug() << " will be processed";
-                }
-                if ( m_printing ) debug() << endmsg;
-                */
-                if (forwd) {
-                    myInTracks.push_back( tr );
-                    if ( m_printing ) debug() << " will be processed";
-                }
-                if ( m_printing ) debug() << endmsg;
-
-            }
-            }
-            } else {  //== Copy tracks without ancestor...
-                for(auto tr : *inTracks) {
-                    //== Ignore tracks with ancestor = forward...
-                    if ( m_removeUsed && 0 < tr->ancestors().size() ) continue;
-                    myInTracks.push_back( tr );
-                }
-            }
-            }
+          if (mat) {
+          myInTracks.push_back( tr );
+          if ( m_printing ) debug() << " will be processed";
+          }
+          if ( m_printing ) debug() << endmsg;
+        */
+        if (forwd) {
+          myInTracks.push_back( tr );
+          if ( m_printing ) debug() << " will be processed";
+        }
+        if ( m_printing ) debug() << endmsg;
+                
+      }
+    }
+  } else {  //== Copy tracks without ancestor...
+    for(auto tr : *inTracks) {
+      //== Ignore tracks with ancestor = forward...
+      if ( m_removeUsed && 0 < tr->ancestors().size() ) continue;
+      myInTracks.push_back( tr );
+    }
+  }
+}
 
 //=========================================================================
 //  Cleanup already used T-Seeds
@@ -891,6 +909,8 @@ void PrDownstream::tagUsedUT( const LHCb::Track* tr ) {
 void PrDownstream::getPreSelection( PrDownTrack2& track ) {
   // Max Pt around 100 MeV for strange particle decay -> maximum displacement is in 1/p.
   double xPredTol = m_xPredTol2;
+  info()<<"checking track.moment = "<<track.moment()<<endmsg;
+  info()<<"is this >1e-6?"<<endmsg;
   if (std::abs(track.moment()) >  1e-6)
       xPredTol = m_xPredTol / fabs( track.moment() ) + m_xPredTol2;  // P dependance + overal tol.
   double yTol = xPredTol;
@@ -899,32 +919,53 @@ void PrDownstream::getPreSelection( PrDownTrack2& track ) {
   m_uvHits.clear();
 
   //== Collect all hits compatible with the extrapolation, region by region.
-  if ( m_printing ) info() << "-- collect hits with tolerance " << xPredTol << endmsg;
+  /*if ( m_printing )*/ info() << "-- collect hits with tolerance " << xPredTol << endmsg;
 
   for ( int kSta = 0; m_utHitManager->maxStations() > kSta; ++kSta ) {
     for ( int kLay = 0; m_utHitManager->maxLayers() > kLay; ++kLay ) {
       for ( int kReg = 0; m_utHitManager->maxRegions() > kReg; ++kReg ) {
         const Tf::IUTHitCreator::STRegion* reg = m_utHitManager->region( kSta, kLay, kReg );
         const double yReg = track.yAtZ( reg->z() );
-        if ( !reg->isYCompatible( yReg, yTol ) ) continue;
+        if ( !reg->isYCompatible( yReg, yTol ) ){
+          info()<<"Threw out region incompatible at "<<yReg<<" with ytolerance "<<yTol<<endmsg;
+          continue;
+        }
+        
         const double xReg = track.xAtZ( reg->z() );
-        if ( !reg->isXCompatible( xReg, xPredTol ) ) continue;
+        if ( !reg->isXCompatible( xReg, xPredTol ) ){ 
+          info()<<"threw out region incompatible in x at "<<xReg<<" with tolerance"<<xPredTol<<endmsg;
+          continue;
+        }
+        
         Tf::UTStationHitManager<PrUTHit>::HitRange coords = m_utHitManager->hits( kSta, kLay, kReg );
         for(auto hit : coords) {
-          if (hit->hit()->ignore()) continue;
+
+          if (hit->hit()->ignore()){ 
+            info()<<"ignoring hit "<<hit->hit()->lhcbID().lhcbID()<<endmsg;
+            continue;
+          }
+          
           if ( hit->hit()->testStatus( Tf::HitBase::UsedByPatMatch ) ) {
-            if (m_printing) debug()<<"Skip hit "<<hit->hit()->lhcbID()<<endmsg;
+            /*if (m_printing) debug()*/info()<<"Skip hit "<<hit->hit()->lhcbID()<<endmsg;
             continue;
           }
 
           const double yPos   = track.yAtZ( hit->z() );
-          if ( !hit->hit()->isYCompatible( yPos, yTol ) ) continue;
+          if ( !hit->hit()->isYCompatible( yPos, yTol ) ){
+            info()<<"threw out hit "<<hit->hit()->lhcbID().lhcbID()<<"due to ypos "<<yPos<<"  incompatible with tolerance "<<yTol<<endmsg;
+            continue;
+          }
+          
 
           const double yTrack = track.yAtZ( 0. );
           const double tyTr   = track.slopeY();
           updateUTHitForTrack( hit, yTrack, tyTr );
           const double pos    = track.xAtZ( hit->z() );
-          if ( xPredTol < fabs( pos - hit->x() ) ) continue;
+          if ( xPredTol < fabs( pos - hit->x() ) ){ 
+            info()<<"threw out hit "<<hit->hit()->lhcbID().lhcbID()<<" due to incompatible position "<<pos<<" - xhitpos "<<hit->x()<<" less than tolerance "<<xPredTol<<endmsg;
+            continue;
+          }
+          
           hit->hit()->setStatus( Tf::HitBase::UsedByPatDownstream, false );
           hit->setProjection( fabs( hit->x()-pos ) );
           // check if x or stereo hit
@@ -1699,15 +1740,15 @@ void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
     }
     
   }
-  //std::cout<<"z_upstream = "<<z_upstream<<", x_upstream = "<<x_upstream<<std::endl;
-  //  std::cout<<"z_downstream = "<<z_downstream<<",x_downstream = "<<x_downstream<<std::endl;
+  std::cout<<"z_upstream = "<<z_upstream<<", x_upstream = "<<x_upstream<<std::endl;
+  std::cout<<"z_downstream = "<<z_downstream<<",x_downstream = "<<x_downstream<<std::endl;
   //redo guesses, especially if no x2
   double guessSX= (x_downstream - x_upstream)/(z_downstream - z_upstream);
   double guessX =0.5 * ( (x_downstream + x_upstream) - guessSX * (z_upstream+z_downstream));
   track.setSlopeX(guessSX);
   track.setXat0(guessX);  
   bool again;
-  //std::cout<<"will loop over "<< track.hits().size()<<" hits"<<std::endl;
+  std::cout<<"will loop over "<< track.hits().size()<<" hits"<<std::endl;
   int nit = 0;
   do {
     again = false;
@@ -1744,7 +1785,7 @@ void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
     rhs[3]=(yT - guessY - guessSY*zput)*(zput*error_tyty - error_tyy)/(error_tyty*error_yy - error_tyy*error_tyy)+
       (guessSY- tyT)*(zput*error_tyy - error_yy)/(error_tyty*error_yy - error_tyy*error_tyy);
     
-    //std::cout<<"yT = "<<yT<<", tyT = "<<tyT<<std::endl;
+    std::cout<<"yT = "<<yT<<", tyT = "<<tyT<<std::endl;
     
     int nbUV = 0;
     double dum = 0.;
@@ -1768,23 +1809,23 @@ void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
         break;
       case 2:
         meas_pos = hit->hit()->xMin()*ct + hit->hit()->yMax()*st;//theta is different for u and v layers.
-        //std::cout<<"modifying mean position "<<meas_pos<<" by "<<alpha_v * q + beta_v/track.moment()<<"to be"<<std::endl;
+        std::cout<<"modifying mean position "<<meas_pos<<" by "<<alpha_v * q + beta_v/track.moment()<<"to be"<<std::endl;
         meas_pos-= alpha_v*q+ beta_v/track.moment();
-        //std::cout<<meas_pos<<std::endl;
+        std::cout<<meas_pos<<std::endl;
         dum = alpha_sigmav + beta_sigmav/track.moment() + gamma_sigmav/track.moment()/track.moment();
         w = 1./(dum * dum);
         break;
       case 3:
         meas_pos = hit->hit()->x();
-        //std::cout<<"modifying mean position "<<meas_pos<<" by "<<alpha_x2 * q + beta_x2/track.moment()<<"to be"<<std::endl;
+        std::cout<<"modifying mean position "<<meas_pos<<" by "<<alpha_x2 * q + beta_x2/track.moment()<<"to be"<<std::endl;
         meas_pos -= alpha_x2 * q + beta_x2/track.moment();
-        //std::cout<<meas_pos<<std::endl;
+        std::cout<<meas_pos<<std::endl;
         
         dum = alpha_sigmax2 + beta_sigmax2/track.moment() + gamma_sigmax2/track.moment()/track.moment();;
         w = 1./(dum * dum);
         break;
       default:
-        info()<<"something wrong with setting the hit specific info"<<endmsg;
+        std::cout<<"something wrong with setting the hit specific info"<<std::endl;
       }
                
       double guess_pos = (guessX + guessSX*z)*ct + (guessY + guessSY*z)*st;
@@ -1817,20 +1858,21 @@ void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
     
     if (0 != nbUV) {
       CholeskyDecomp<double, 4> decomp(mat);
-      //std::cout<<"!decomp = "<<!decomp<<std::endl;
+      std::cout<<"!decomp = "<<!decomp<<std::endl;
       if (!decomp) {
         track.setChisq(1e42);
-        //info()<<"! decomp in 4x4 matrix."<<endmsg;
+        std::cout<<"! decomp in 4x4 matrix."<<std::endl;
         return;
       } else {
         decomp.Solve(rhs);
       }
     } 
     else {
+      track.setChisq(1e42);
       /* CholeskyDecomp<double, 2> decomp(mat);
       if (!decomp) {
         track.setChisq(1e42);
-        info()<<"! decomp in 2x2 matrix."<<endmsg;
+        std::cout<<"! decomp in 2x2 matrix."<<std::endl;
         return;
       } else {
         decomp.Solve(rhs);
@@ -1842,15 +1884,15 @@ void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
     }
     
     const double dx = rhs[0], dsl = rhs[1], dy = rhs[2], dsly = rhs[3];
-    /*info() << format( "  dx %7.3f dsl %7.6f dy %7.3f, dSY %7.6f",
-      dx, dsl, dy,dsly ) << endmsg;*/
+    /*std::cout << format( "  dx %7.3f dsl %7.6f dy %7.3f, dSY %7.6f",
+      dx, dsl, dy,dsly ) << std::endl;*/
     
     double newx = guessX + dx;
     double newsx = guessSX + dsl;
     double newy = guessY + dy;
     double newsy = guessSY + dsly;
-    //std::cout<<"guessX = "<<guessX<<", guessSX = "<<guessSX<<", guessY = "<<guessY<<"guessSY = "<<guessSY<<std::endl;
-    //std::cout<<"newx = "<<newx<<", newsx = "<<newsx<<", newy = "<<newy<<", newsy = "<<newsy<<std::endl;
+    std::cout<<"guessX = "<<guessX<<", guessSX = "<<guessSX<<", guessY = "<<guessY<<"guessSY = "<<guessSY<<std::endl;
+    std::cout<<"newx = "<<newx<<", newsx = "<<newsx<<", newy = "<<newy<<", newsy = "<<newsy<<std::endl;
     /*
     track.setSlopeX(guessSX);
     track.setSlopeY(guessSY);
@@ -1877,7 +1919,7 @@ void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
                                    (tyT - newsy)*error_yy/(error_tyty*error_yy - error_tyy*error_tyy))+
       (yT - newy - newsy*zput)*((yT - newy - newsy*zput)*error_tyty/(error_tyty*error_yy - error_tyy*error_tyy) +
                                 (tyT - newsy)*error_tyy/(error_tyy*error_tyy - error_tyty*error_yy));
-    debug()<<"chi2 from tseed = "<<internal_chi2<<endmsg;
+    std::cout<<"chi2 from tseed = "<<internal_chi2<<std::endl;
     
     
     //all the info from the tseed.
@@ -1918,12 +1960,12 @@ void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
         w = 1./(dum * dum);
         break;
       default:
-        info()<<"something wrong with setting the hit specific info"<<endmsg;
+        std::cout<<"something wrong with setting the hit specific info"<<std::endl;
       }
       
       double guess_pos = (newx + newsx*z)*ct + (newy + newsy*z)*st;
       double dist = meas_pos - guess_pos;//track.distance( hit );
-      //info()<<"dist for hit "<<hit->planeCode()<<"="<<dist<<endmsg;
+      std::cout<<"dist for hit "<<hit->planeCode()<<"="<<dist<<std::endl;
       //double z_mag = 5393. + (-1.363e5)/fabs(track.moment()) + (1.102e9)/track.moment()/track.moment();
       //double tseed_x0=(track.state.x() - track.state.z()*track.state.tx()) ;
       //double diff_at_xmag_new = (track.);
@@ -1934,7 +1976,7 @@ void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
         if ( m_debugTool ) m_debugTool->debugUTCluster( info(), hit );
         info() << endmsg;
       }
-      debug()<<"for hit in plane "<<hit->planeCode()<<", adding chi2 "<< dist*dist*w<<endmsg;
+      std::cout<<"for hit in plane "<<hit->planeCode()<<", adding chi2 "<< dist*dist*w<<std::endl;
       
       internal_chi2 += dist * dist * w;
       
@@ -1943,7 +1985,7 @@ void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
         worst = itH;
       }
     }
-    debug()<<"Total chi2 = "<<internal_chi2<<endmsg;
+    std::cout<<"Total chi2 = "<<internal_chi2<<std::endl;
     nit++;
     guessX = newx;
     guessSX = newsx;
@@ -1967,9 +2009,9 @@ void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
           double yTrack = newy + newsy*hit->z();
           if ( yTrack > hit->hit()->yMin() && yTrack < hit->hit()->yMax() ) continue;
           if ( m_printing ) {
-            info() << "   remove Y incompatible hit measure = " << hit->x()
+            std::cout << "   remove Y incompatible hit measure = " << hit->x()
                    << " : y " << yTrack << " min " << hit->hit()->yMin()
-                   << " max " << hit->hit()->yMax() << endmsg;
+                   << " max " << hit->hit()->yMax() << std::endl;
           }
           track.hits().erase( itH );
           maxDist = 0.;  // avoid deleting worst, may be already gone...

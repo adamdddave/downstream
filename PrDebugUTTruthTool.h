@@ -6,7 +6,7 @@
 // from Gaudi
 #include "GaudiAlg/GaudiTool.h"
 #include "PrKernel/IPrDebugUTTool.h"            // Interface
-
+#include "PrKernel/PrUTHit.h"//pr ut hits, to see if it helps
 #include "Event/MCParticle.h"
 #include "Linker/LinkerTool.h"
 #include "TrackInterfaces/ITrackExtrapolator.h"
@@ -78,7 +78,7 @@ public:
                             std::vector<LHCb::LHCbID> x2ids,
                             LHCb::Track * track);
   virtual void PrintHitTable(PrUTHit* hit);
-  virtual void PrintHitTableShort(PrUTHit* hit);
+  virtual void PrintHitTableShort(const PrUTHit* hit);
   
   
 protected:

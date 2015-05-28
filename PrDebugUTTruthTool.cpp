@@ -22,6 +22,7 @@
 #include "Event/MCTrackInfo.h"
 #include "MCInterfaces/ILHCbIDsToMCParticles.h"
 #include "MCInterfaces/ILHCbIDsToMCHits.h"
+#include "PrKernel/PrUTHit.h"
 #include "Event/MCHit.h"
 #include "Event/StateParameters.h"
 //-----------------------------------------------------------------------------
@@ -167,6 +168,7 @@ void PrDebugUTTruthTool::debugUTCluster( MsgStream& msg, const PrUTHit* hit ) {
 
 void PrDebugUTTruthTool::recordStepInProcess(std::string step,bool result){
   m_flags[step] |= result;//don't change things if we already have the right answer.
+  info()<<"Recorded for step "<<step<<" result"<<result<<endmsg;
 }
 //=============================================================================
 // Extra method from PrAddUTHits to check the hits form the UT if it's on the track
@@ -298,8 +300,11 @@ bool PrDebugUTTruthTool::isTrackReconstructible(LHCb::Track& track)///there's a 
   MCTrackInfo trackInfo( evtSvc(), msgSvc() );
   if ( 0 == trackInfo.fullInfo( part ) ) {return false;}
   if(!part) return false;
-  bool isdown = trackInfo.hasT( part ) &&  trackInfo.hasTT( part ) && (!trackInfo.hasVelo(part));
+  bool isdown = trackInfo.hasT( part ) &&  trackInfo.hasTT( part ) ;
+  bool notvelo =(!trackInfo.hasVelo(part));
+  
   isdown = isdown &&(abs(part->particleID().pid())!=11);//kill the electrons
+  notvelo = notvelo&&(abs(part->particleID().pid())!=11);//kill the electrons
   //all the rest of this is for checks which can be made additionally.
   bool fromKs = false;
   //stolen from PrChecker
@@ -324,7 +329,7 @@ bool PrDebugUTTruthTool::isTrackReconstructible(LHCb::Track& track)///there's a 
   //if (isdown/* && over5&&over300pt && eta25 && fromKs*/){
   //  if(setMCParticle){m_mc_part = part;}
   //}
-  return (isdown /*&& over5 && over300pt && eta25 && fromKs*/);
+  return (isdown && notvelo /*&& over5 && over300pt && eta25 && fromKs*/);
 
 }
 
@@ -422,16 +427,28 @@ bool PrDebugUTTruthTool::CheckMCinIntermediateHits(std::vector<int> containerx,
                   || ngood_x1+ngood_x2+ngood_v>2//x1,v, x2 fired
                   || ngood_x2+ngood_u+ngood_v >2//u,v,x2 fired
                   || ngood_x1+ngood_u+ngood_v >2)?true:false;//x1,u,v fired
+  info()<<"In check intermediate hits, result is "<<the_ans<<endmsg;
+  
   return the_ans;
 }
 
 void PrDebugUTTruthTool::printTSeedInfoShort(LHCb::Track* tr){
+  int nMatchedHits = 0;
+  int ntot = 0;
+  for(auto id: tr->lhcbIDs()){
+    if(!id.isFT())continue;//don't consider other hits on the track
+    ntot++;
+    if(isIDOnMCParticle(id, *tr))nMatchedHits++;
+  }
+  
   info()<<"Seed xyz("
         <<tr->closestState(StateParameters::ZBegT).x()<<","
         <<tr->closestState(StateParameters::ZBegT).y()<<","
         <<tr->closestState(StateParameters::ZBegT).z()<<") ,tx,ty("
         <<tr->closestState(StateParameters::ZBegT).tx()<<","
-        <<tr->closestState(StateParameters::ZBegT).ty()<<")"<<endmsg;
+        <<tr->closestState(StateParameters::ZBegT).ty()
+        <<"), nMatchedHits "<<nMatchedHits<<" / "
+        <<ntot<<endmsg;
   return;
 }
 
@@ -466,7 +483,7 @@ bool PrDebugUTTruthTool::isPreselGood(std::vector<LHCb::LHCbID> x1ids,
   //also sets the maps for every other check, since every other check
   //will be a subset of the preselection hits.
   int nx1_good(0),nx2_good(0),nu_good(0),nv_good(0);
-  for(auto x1id: x1ids){ 
+  for(auto x1id: x1ids){
     m_x1_matching_map[x1id.lhcbID()] = isIDOnMCParticle(x1id,*track);
     if(m_x1_matching_map[x1id.lhcbID()]==1) nx1_good++;
   }
@@ -489,7 +506,7 @@ bool PrDebugUTTruthTool::isPreselGood(std::vector<LHCb::LHCbID> x1ids,
                   || nx1_good+nx2_good+nv_good>2//x1,v, x2 fired
                   || nx2_good+nu_good+nv_good >2//u,v,x2 fired
                   || nx1_good+nu_good+nv_good >2)?true:false;//x1,u,v fired
-  std::cout<<"the_ans = "<<the_ans<<std::endl;
+  std::cout<<"result from is presel good = "<<the_ans<<std::endl;
   
   return the_ans;
 }
@@ -575,14 +592,19 @@ void PrDebugUTTruthTool::PrintHitTable(PrUTHit* hit)
 
   return;
 }
-void PrDebugUTTruthTool::PrintHitTableShort(PrUTHit* hit){
-  int id = hit->hit()->lhcbID().lhcbID();
-  bool truth_matched = ((m_x1_matching_map[id] ==1)||
-                        (m_x2_matching_map[id] ==1)||
-                        (m_u_matching_map[id] ==1)||
-                        (m_v_matching_map[id] ==1))?1:0;
+void PrDebugUTTruthTool::PrintHitTableShort(const PrUTHit* hit){
+  //int id = hit->hit()->lhcbID().lhcbID();
+  //  info()<<"printing stream to check"<<endmsg;
+  //  hit->hit()->lhcbID().fillStream(std::cout);
+  //  info()<<"done"<<endmsg;
+  //info()<<"testing id in print hit table short = "<<id<<endmsg;
   
-  info()<<"Hit ("<< id<<") Plane "<<hit->planeCode()
+  bool truth_matched = ((m_x1_matching_map[hit->hit()->lhcbID().lhcbID()] ==1)||
+                        (m_x2_matching_map[hit->hit()->lhcbID().lhcbID()] ==1)||
+                        (m_u_matching_map[hit->hit()->lhcbID().lhcbID()] ==1)||
+                        (m_v_matching_map[hit->hit()->lhcbID().lhcbID()] ==1))?1:0;
+  
+  info()<<"Hit ("<< hit->hit()->lhcbID().lhcbID()<<") Plane "<<hit->planeCode()
         <<" x,y,z("<<hit->hit()->x(hit->hit()->y())<<","<<hit->hit()->y()<<","<<hit->hit()->z(hit->hit()->y())
         <<"), truthMatched "<<truth_matched<<endmsg;
   
