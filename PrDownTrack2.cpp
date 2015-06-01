@@ -3,7 +3,7 @@
 
 // local
 #include "PrDownTrack2.h"
-
+#include "PrDownTrack.h"
 //-----------------------------------------------------------------------------
 // Implementation file for class : PrDownTrack2, from Pat/PatKShort package and
 // from PrDownTrack.
@@ -52,4 +52,27 @@ PrDownTrack2::PrDownTrack2( LHCb::Track* tr,
   double xmagnet_new = (m_seed_state->x()) + m_seed_state->tx()*(zmagnet_new - m_seed_state->z());
   double ymagnet_new = (m_seed_state->y()) + m_seed_state->ty()*(zmagnet_new - m_seed_state->z());
   m_seed_magnet = Gaudi::XYZPoint(xmagnet_new, ymagnet_new,zmagnet_new);
+}
+
+//alternative constructor
+PrDownTrack2::PrDownTrack2(PrDownTrack &tr){
+  m_hits = tr.hits();
+  m_seed_track = tr.track();
+  m_seed_state = tr.state();
+  m_slopeY = tr.slopeY();
+  m_momPar_old = tr.MomPars();
+  m_magPar_old = tr.MagPars();
+  m_magnetScale = tr.MagScale();
+  m_y0 = tr.yAtZ(0);
+  //now hard code a bunch of new magnet parameters right now.
+  std::vector<double> params;
+  params.push_back(5393);//p0
+  params.push_back(-1.363e5);//p1
+  params.push_back(1.102e9);//p2
+  //so this can be replaced later.
+  m_magPar = &params;
+  m_slopeX = tr.slopeX();
+  
+  m_seed_magnet = Gaudi::XYZPoint(tr.xMagnet(), tr.yMagnet(),tr.zMagnet());
+  
 }

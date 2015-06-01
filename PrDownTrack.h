@@ -43,7 +43,10 @@ public:
     m_slopeXCand = slope;
   }
   double      slopeY()           const { return m_slopeY; }
-  void setSlopeY( double slope){m_slopeY = slope;}
+  void setSlopeY( double slope )       { 
+    m_slopeY = slope;
+  }
+
   double      moment()  const { 
     return ( (*m_momPar)[0] +    
              (*m_momPar)[1] * m_state->tx() * m_state->tx() +
@@ -114,27 +117,15 @@ public:
   }
 
   double dxMagnet() const { return m_magnetSave.x() - m_magnet.x(); }
-  double dyMagnet() const { return m_magnetSave.y() - m_magnet.y(); }//added AD 6/25/14
 
   void sortFinalHits() {
     std::sort( m_hits.begin(), m_hits.end(), Tf::increasingByZ<PrUTHit>() );
   }
   
-  void updateParamsAdam( double dx, double dsl, double dy ) {
-    // Added AD 7-22-14
-    m_displX += dx;
-    m_displY += dy;
-    m_magnet  = Gaudi::XYZPoint( m_magnet.x() + dx, m_magnet.y() + dy, m_magnet.z() );
-    m_slopeX += dsl;  
-  }
-  
-   
-  //AD added 3/9/15 for new chi2.
-  void setPostUTstate(LHCb::State* state){m_state_at_zpUT = state->clone();}
-  LHCb::State* statePostUT(){return m_state_at_zpUT;}
-
-  void setPreUTstate(LHCb::State* state){m_state_at_zpreUT = state->clone();}
-  LHCb::State* statePreUT(){return m_state_at_zpreUT;}
+  //add accessors for the magnet parameters
+  double MagScale(){return m_magnetScale;}
+  const std::vector<double>* MagPars(){return m_magPar;}
+  const std::vector<double>* MomPars(){return m_momPar;}
 
 protected:
 
@@ -148,9 +139,6 @@ private:
   Gaudi::XYZPoint     m_magnet;
   Gaudi::XYZPoint     m_magnetSave;
 
-  LHCb::State*        m_state_at_zpUT;//state at post ut.
-  LHCb::State*        m_state_at_zpreUT;//state at pre ut.
-  
   double      m_slopeX;
   double      m_slopeXSave;
   double      m_slopeXCand;

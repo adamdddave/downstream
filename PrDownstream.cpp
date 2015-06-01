@@ -2,7 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
-#include <assert.h>
+
 // from boost
 #include <boost/assign/list_of.hpp>
 #include <boost/array.hpp>
@@ -37,21 +37,18 @@ using ROOT::Math::CholeskyDecomp;
 //
 // 2005-11-18 : Olivier Callot
 // 2009-10-07 : Sascha Stahl
-// 2015-05-18 : Adam Davis
 //-----------------------------------------------------------------------------
 
 DECLARE_ALGORITHM_FACTORY( PrDownstream )
 
-/*
+
 bool sortByChi2Tr( PrDownTrack lhs, PrDownTrack rhs) {return lhs.chisq()< rhs.chisq();}
-bool sortByHitsTr(PrDownTrack lhs, PrDownTrack rhs) {return lhs.hits().size()> rhs.hits().size();}*/
-bool sortByChi2Tr( PrDownTrack2 lhs, PrDownTrack2 rhs) {return lhs.chisq()< rhs.chisq();}
-bool sortByHitsTr(PrDownTrack2 lhs, PrDownTrack2 rhs) {return lhs.hits().size()> rhs.hits().size();}
+bool sortByHitsTr(PrDownTrack lhs, PrDownTrack rhs) {return lhs.hits().size()> rhs.hits().size();}
 //=============================================================================
 // Standard constructor, initializes variables
 //=============================================================================
 PrDownstream::PrDownstream( const std::string& name,
-                      ISvcLocator* pSvcLocator)
+                            ISvcLocator* pSvcLocator)
   : GaudiAlgorithm ( name , pSvcLocator ),
     m_downTime( 0 ),
     m_printing( false ),
@@ -127,10 +124,9 @@ PrDownstream::PrDownstream( const std::string& name,
   declareProperty( "SeedKey"       , m_seedKey       = -1    );
   declareProperty( "WithDebugTool" , m_withDebugTool = false );
   declareProperty( "DebugTool"     , m_debugToolName = "PrDebugUTTruthTool" );
-  declareProperty("NumberIterationsNewChi2",m_number_Iterations_new_chi2=0);
   declareProperty("PrintVerbose", m_printVerbose = false);
-  
-  //declareProperty( "PrintExtraInformation",m_print_extra_info = false);
+  declareProperty("NumberIterationsNewChi2",m_number_Iterations_new_chi2=0);
+  declareProperty("ForceMCHits",m_forceMChits = false);
   
 }
 //=============================================================================
@@ -231,7 +227,7 @@ StatusCode PrDownstream::execute() {
   std::vector<LHCb::Track*> myInTracks;
   myInTracks.reserve(inTracks->size());
 
-  std::vector< PrDownTrack2 > finalUVtracks;
+  std::vector< PrDownTrack > finalUVtracks;
   finalUVtracks.reserve( inTracks->size() );
 
   //=== Optional: Remove the seeds already used in Match, check by ancestor of Match tracks
@@ -241,7 +237,7 @@ StatusCode PrDownstream::execute() {
 
 
   if ( m_printing ) debug() << "-- Started from " << inTracks->size() << " Seed, left with "
-      << myInTracks.size() << " tracks after Matched removal." << endmsg;
+                            << myInTracks.size() << " tracks after Matched removal." << endmsg;
 
   //==========================================================================
   // Get the output container ( created by PrDataStore )
@@ -258,105 +254,96 @@ StatusCode PrDownstream::execute() {
     put( updated_TSeeds, m_outputLocation+"UpdatedSeed" );
   }
   
+
   //==========================================================================
   // Main loop on tracks
   //==========================================================================
   Tf::UTStationHitManager<PrUTHit>::HitRange utCoords = m_utHitManager->hits();
 
   for ( LHCb::Tracks::const_iterator itT = myInTracks.begin();
-          myInTracks.end() != itT; ++itT ) {
-      LHCb::Track* tr = (*itT);
-      if(m_withDebugTool){//AD add debug information for plots, etc.
-        if(m_printing){ 
-          if(m_printVerbose)m_debugTool->printTSeedInfo(tr);
-          else{m_debugTool->printTSeedInfoShort(tr);}
-        }
-        m_debugTool->printTSeedInfoShort(tr);
-        m_debugTool->recordStepInProcess("reconstructible_asDown",
-                                         m_debugTool->isTrackReconstructible(*tr));  
+        myInTracks.end() != itT; ++itT ) {
+    LHCb::Track* tr = (*itT);
+
+    if ( 0 <= m_seedKey && m_seedKey == tr->key() ) m_printing = true;
+    if(m_withDebugTool){//AD add debug information for plots, etc.
+      m_debugTool->resetflags();
+      if(m_printing){ 
+        if(m_printVerbose)m_debugTool->printTSeedInfo(tr);
+        else{m_debugTool->printTSeedInfoShort(tr);}
       }
+      //m_debugTool->printTSeedInfoShort(tr);
+      m_debugTool->recordStepInProcess("ReconstructibleAsDown",
+                                       m_debugTool->isTrackReconstructible(*tr));  
+    }
       
-      if ( 0 <= m_seedKey && m_seedKey == tr->key() ) m_printing = true;
-      
-      const double magScaleFactor = m_magFieldSvc->signedRelativeCurrent() ;
+    const double magScaleFactor = m_magFieldSvc->signedRelativeCurrent() ;
 
-      if( std::abs(magScaleFactor) > 1e-6 ){
-          m_magnetOff = false;
-      } else m_magnetOff = true;
-      //PrDownTrack track( tr, m_zUT, m_zMagnetParams, m_momentumParams, m_yParams, m_errZMag, magScaleFactor*(-1) );
-      PrDownTrack2 track(tr,m_zMagnetParams,m_momentumParams,magScaleFactor*(-1));
-      
+    if( std::abs(magScaleFactor) > 1e-6 ){
+      m_magnetOff = false;
+    } else m_magnetOff = true;
+    PrDownTrack track( tr, m_zUT, m_zMagnetParams, m_momentumParams, m_yParams, m_errZMag, magScaleFactor*(-1) );
 
-      // if(m_legacy) {
-      //   //Y. Xie: get rid of particles from beampipe
-      //   /*
-      //   const double xAtUT = track.xAtZ( m_zUTa );
-      //   const double yAtUT = track.yAtZ( m_zUTa );
-      //   if( m_minUTx > fabs(xAtUT) &&
-      //   m_minUTy > fabs(yAtUT)       ) continue;*/
-      // }
+    if(m_legacy) {
+      //Y. Xie: get rid of particles from beampipe
+      const double xAtUT = track.xAtZ( m_zUTa );
+      const double yAtUT = track.yAtZ( m_zUTa );
+      if( m_minUTx > fabs(xAtUT) &&
+          m_minUTy > fabs(yAtUT)       ) continue;
+    }
 
-      const double deltaP = track.moment() * track.state()->qOverP() - 1.;
-      
-      if ( m_printing ) {
-          for ( auto itH : utCoords ){
-              PrUTHit* hit = itH;
-              if (hit->hit()->ignore()){
-                info()<<"ignoring hit "<<hit->hit()->lhcbID().lhcbID()<<endmsg;
-                continue;
-              }
-              const double yTrack = track.yAtZ( 0. );
-              const double tyTr   = track.slopeY();
-              updateUTHitForTrack( hit, yTrack, tyTr );
-              //if(m_withDebugTool)m_debugTool->PrintHitTable(hit);//this is the wrong place to do this. AD 5-22-15
-          }
+    const double deltaP = track.moment() * track.state()->qOverP() - 1.;
 
-          info() << "Track " << tr->key()
-            /*
-                 << format( " [%7.2f %7.2f GeV] x,y(UTa)%7.1f%7.1f dp/p%7.3f errXMag%6.1f YUT%6.1f",
-                            .001/track.state()->qOverP(), .001*track.moment(),
-                            track.xAtZ( m_zUTa ), track.yAtZ( m_zUTa ), deltaP,
-                            track.errXMag(), track.errYMag() )*/
-                 << endmsg;
-            info() << format( " Y slope %8.6f computed %8.6f", track.state()->ty(), track.slopeY() )
-              << endmsg;
-          info()<<"calling debugutclusterontrack"<<endmsg;
-          if ( m_debugTool ) m_debugTool->debugUTClusterOnTrack( tr, utCoords.begin(), utCoords.end() );
-          info()<<"done calling debugutclusterontrack"<<endmsg;
-      }
-      
-      
-      // check for compatible momentum
-      if ( m_deltaP < fabs(deltaP) ) {
-        /*if ( m_printing )*/ info() << "   --- deltaP " << deltaP << " -- rejected" << endmsg;
-        info()<<"m_deltaP = "<<m_deltaP<<endmsg;
-        info()<<"track momentum = "<<track.moment()<<endmsg;
-        
-          if ( !m_magnetOff ) continue;
-          continue;
+    if ( m_printing ) {
+      for ( auto itH : utCoords ){
+        PrUTHit* hit = itH;
+        if (hit->hit()->ignore()) continue;
+        const double yTrack = track.yAtZ( 0. );
+        const double tyTr   = track.slopeY();
+        updateUTHitForTrack( hit, yTrack, tyTr );
       }
 
-      // Get hits in UT around a first track estimate
-      getPreSelection( track );
-      
-      
-      if(m_withDebugTool){
-        std::vector<LHCb::LHCbID> x1lhcbids,ulhcbids,vlhcbids,x2lhcbids;
-        for(auto xhit:m_xHits){
-          if(xhit->planeCode()==0)x1lhcbids.push_back(xhit->hit()->lhcbID());
-          if(xhit->planeCode()==3)x2lhcbids.push_back(xhit->hit()->lhcbID());
-        }
-        for(auto uvhit:m_uvHits){
-          if(uvhit->planeCode()==1)ulhcbids.push_back(uvhit->hit()->lhcbID());
-          if(uvhit->planeCode()==2)vlhcbids.push_back(uvhit->hit()->lhcbID());
-        }
-        m_debugTool->recordStepInProcess("getPreselection",
-                                         m_debugTool->isPreselGood(x1lhcbids,ulhcbids,vlhcbids,x2lhcbids,tr));
-        x1lhcbids.clear();ulhcbids.clear();vlhcbids.clear();x2lhcbids.clear();
+      info() << "Track " << tr->key()
+             << format( " [%7.2f %7.2f GeV] x,y(UTa)%7.1f%7.1f dp/p%7.3f errXMag%6.1f YUT%6.1f",
+                        .001/track.state()->qOverP(), .001*track.moment(),
+                        track.xAtZ( m_zUTa ), track.yAtZ( m_zUTa ), deltaP,
+                        track.errXMag(), track.errYMag() )
+             << endmsg;
+      info() << format( " Y slope %8.6f computed %8.6f", track.state()->ty(), track.slopeY() )
+             << endmsg;
+
+      if ( m_debugTool ) m_debugTool->debugUTClusterOnTrack( tr, utCoords.begin(), utCoords.end() );
+    }
+
+    // check for compatible momentum
+    if ( m_deltaP < fabs(deltaP) ) {
+      if ( m_printing ) info() << "   --- deltaP " << deltaP << " -- rejected" << endmsg;
+      if ( !m_magnetOff ) continue;
+      continue;
+    }
+
+    // Get hits in UT around a first track estimate
+    getPreSelection( track );
+            
+    if(m_withDebugTool){
+      std::vector<LHCb::LHCbID> x1lhcbids,ulhcbids,vlhcbids,x2lhcbids;
+      for(auto xhit:m_xHits){
+        if(xhit->planeCode()==0)x1lhcbids.push_back(xhit->hit()->lhcbID());
+        if(xhit->planeCode()==3)x2lhcbids.push_back(xhit->hit()->lhcbID());
       }
-      if(m_withDebugTool){
-        info()<<"calling verbose printing"<<endmsg;
-        
+      for(auto uvhit:m_uvHits){
+        if(uvhit->planeCode()==1)ulhcbids.push_back(uvhit->hit()->lhcbID());
+        if(uvhit->planeCode()==2)vlhcbids.push_back(uvhit->hit()->lhcbID());
+      }
+      m_debugTool->recordStepInProcess("getPreSelection",m_debugTool->isPreselGood(x1lhcbids,ulhcbids,vlhcbids,x2lhcbids,tr));
+
+      x1lhcbids.clear();ulhcbids.clear();vlhcbids.clear();x2lhcbids.clear();
+      if(m_forceMChits){
+        m_debugTool->ForceMCHits(m_xHits);
+        m_debugTool->ForceMCHits(m_uvHits);
+      }
+      
+      //info()<<"calling verbose printing"<<endmsg;
+      if(m_printing){ 
         for(auto hit: m_xHits){
           if(m_printVerbose) m_debugTool->PrintHitTable(hit);
           else{m_debugTool->PrintHitTableShort(hit);}
@@ -367,335 +354,326 @@ StatusCode PrDownstream::execute() {
         }
       }
       
-      //now the preselection is there, we can print everything
-      
-      int nbOK = 0;
-      //PrDownTrack bestTrack( track );
-      PrDownTrack2 bestTrack( track );
+    }
+    //here
 
-      //std::vector<PrDownTrack> trackCands;
-      std::vector<PrDownTrack2> trackCands;
-      trackCands.reserve(300);
+    int nbOK = 0;
+    PrDownTrack bestTrack( track );
 
-      PrUTHits MatchingXHits;
-      MatchingXHits.reserve(16);
-      int maxPoints = 0;
-      double minChisq = m_maxChisq + 10.;
+    std::vector<PrDownTrack> trackCands;
+    trackCands.reserve(300);
 
-      if(m_legacy) {
-          PrUTHits::const_iterator itH;
-          if ( 2 < ( m_xHits.size() +  m_uvHits.size() ) ) {
-              //==============================================================
-              // Try to find a candidate: X first, then UV.
-              //==============================================================
-            
-              for ( itH = m_xHits.begin(); m_xHits.end() != itH; itH++ ) {
-                  PrUTHit* myHit = *itH;
-                  if ( myHit->hit()->testStatus( Tf::HitBase::UsedByPatDownstream ) ){ 
-                    info()<<"rejecting used hit already "<<myHit->hit()->lhcbID().lhcbID()<<endmsg;
-                    continue;
-                  }
-                  
-                  info()<<"selected hit to start "<<myHit->hit()->lhcbID().lhcbID()<<endmsg;
-                  
-                  double meanZ = myHit->z();
-                  double posX  = myHit->x( );
-                  int myPlane  = myHit->planeCode();
+    PrUTHits MatchingXHits;
+    MatchingXHits.reserve(16);
+    int maxPoints = 0;
+    double minChisq = m_maxChisq + 10.;
 
-                  track.startNewCandidate();
+    if(m_legacy) {
+      PrUTHits::const_iterator itH;
+      if ( 2 < ( m_xHits.size() +  m_uvHits.size() ) ) {
+        //==============================================================
+        // Try to find a candidate: X first, then UV.
+        //==============================================================
 
-                  // Create track estimate with one x hit
-                  //double slopeX = (track.xMagnet() - posX + track.sagitta( meanZ)) / (track.zMagnet() - meanZ);
-                  //info()<<"Old Slope X from one hit= "<<(track.xMagnet() - posX + track.sagitta( meanZ)) / (track.zMagnet() - meanZ)<<endmsg;
-                  double slopeX = (track.xMagnet()- posX)/(track.zMagnet() - meanZ);
-                  info()<<"new slope x = "<<slopeX<<endmsg;
-                  track.setSlopeX( slopeX );
-                  
-                  if ( m_printing ) {
-                      const double tolMatch = (std::abs(track.state()->p() / m_tolMomentum) < 1. / (m_maxWindow - m_tolX)) ?
-                          m_maxWindow : (m_tolX + m_tolMomentum / track.state()->p());
-                      info() << endmsg 
-                          << format( "... start plane %1d x%8.2f z%8.1f slope%8.2f tolMatch%7.3f",
-                                  myPlane, posX, meanZ, 1000. * slopeX, tolMatch )
-                          << endmsg;
-                  }        
+        for ( itH = m_xHits.begin(); m_xHits.end() != itH; itH++ ) {
+          PrUTHit* myHit = *itH;
+          if ( myHit->hit()->testStatus( Tf::HitBase::UsedByPatDownstream ) ) continue;
+          double meanZ = myHit->z();
+          double posX  = myHit->x( );
+          int myPlane  = myHit->planeCode();
 
-                  // Fit x projection
-                  info()<<"Calling find matching hits"<<endmsg;
-                  findMatchingHits( MatchingXHits, track, myPlane );
-                  if(m_withDebugTool){
-                    std::vector<int> xids,uvids;
-                    for(auto hit: MatchingXHits){xids.push_back(hit->hit()->lhcbID().lhcbID());}
-                    for(auto hit: m_uvHits){uvids.push_back(hit->hit()->lhcbID().lhcbID());}
-                    m_debugTool->recordStepInProcess("findMatchingHits",
-                                                     m_debugTool->CheckMCinIntermediateHits(xids,uvids));
-                  }
-                  
-                  //fitXProjection( MatchingXHits, track, myHit );
-                  info()<<"fit x projection 2 called"<<endmsg;
-                  fitXProjection2( MatchingXHits, track, myHit );
-                  if(m_withDebugTool){
-                    std::vector<int> xids,uvids;
-                    for(auto hit: track.hits()){xids.push_back(hit->hit()->lhcbID().lhcbID());}
-                    for(auto hit: m_uvHits){uvids.push_back(hit->hit()->lhcbID().lhcbID());}
-                    m_debugTool->recordStepInProcess("fitXProjection",
-                                                     m_debugTool->CheckMCinIntermediateHits(xids,uvids)); 
-                  }
-                  // Fit 3D track
-                  //addUVHits( track );
-                  info()<<"adding uv hits"<<endmsg;
-                  addUVHits2( track );
-                  if(m_withDebugTool){
-                    std::vector<int> ids;
-                    for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
-                    m_debugTool->recordStepInProcess("addUVHits",
-                                                     m_debugTool->CheckMCinTrackHits(ids)); 
-                  }
-                  
-                  if ( 3 > track.hits().size() ) {
-                      if ( m_printing ) info() << " === not enough hits" << endmsg;
-                      continue;
-                  }
-                  info()<<"calling fit and remove"<<endmsg;
-                  fitAndRemove2( track );
-                  if(m_withDebugTool){
-                    std::vector<int> ids;
-                    for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
-                    m_debugTool->recordStepInProcess("fitAndRemove",
-                                                     m_debugTool->CheckMCinTrackHits(ids)); 
-                  }
-                  //fitAndRemove( track );
-                  //here now for update
-                  info()<<"calling accept candidate"<<endmsg;
-                  // Check if candidate is better than the old one
-                  if ( !acceptCandidate( track, bestTrack, maxPoints, minChisq ) ) continue;
-                  info()<<"candidate accepted"<<endmsg;
-                  if(m_withDebugTool){
-                    std::vector<int> ids;
-                    for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
-                    m_debugTool->recordStepInProcess("acceptCandidate",
-                                                     m_debugTool->CheckMCinTrackHits(ids)); 
-                  }
-                  // New best track
-                  bestTrack = track;
-                  nbOK++;
-              }
-          }
+          track.startNewCandidate();
 
-          //== Debug the track.
-          if ( 0 == nbOK ) {
-              if ( m_printing ) {
-                  info() << format( "Track %3d P=%7.2f GeV --- discarded, not enough planes",
-                          tr->key(),  .001*track.moment() ) << endmsg;
-              }
-          } else {
+          // Create track estimate with one x hit
+          double slopeX = (track.xMagnet() - posX + track.sagitta( meanZ)) / (track.zMagnet() - meanZ);
+          track.setSlopeX( slopeX );
 
-              // Best one  
-              track = bestTrack;
-
-              // add hits in x layers in overlap regions of UT
-              addOverlapRegions( track );     
-              if(m_withDebugTool){
-                std::vector<int> ids;
-                for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
-                m_debugTool->recordStepInProcess("beforeStore",
-                                                 m_debugTool->CheckMCinTrackHits(ids)); 
-              }
-              //=== Store the track
-              storeTrack( track, finalTracks, tr,updated_TSeeds );
-
-          }
-
-      } else {
-        if ( 2 < ( m_xHits.size() +  m_uvHits.size() ) ) {
-          //==============================================================
-          // Try to find a candidate: X first, then UV.
-          //==============================================================
-
-          for ( auto itH : m_xHits ) {
-            if ( m_doTiming ) m_timerTool->start( m_buildTime );
-            PrUTHit* myHit = itH;
-            if ( myHit->hit()->testStatus( Tf::HitBase::UsedByPatDownstream ) ) continue;
-            double meanZ = myHit->z();
-            double posX  = myHit->x( );
-            int myPlane  = myHit->planeCode();
-
-            if ( 1!=myHit->mask() ) continue;
-
-            track.startNewCandidate();
-
-            //Beampipe cut
-            //TODO: Hardcoded for now - we may want to have this as a tuning parameter
-            if(std::sqrt(track.xMagnet()*track.xMagnet()+track.yMagnet()*track.yMagnet()) < 80) continue;
-            // Create track estimate with one x hit
-            //double slopeX = (track.xMagnet() - posX + track.sagitta( meanZ)) / (track.zMagnet() - meanZ);
-            double slopeX = (track.xMagnet() - posX) / (track.zMagnet() - meanZ);
-            track.setSlopeX( slopeX );
-            
-            if ( m_printing ) {
-              const double tolMatch = (std::abs(track.state()->p() / m_tolMomentum) < 1. / (m_maxWindow - m_tolX)) ?
-                m_maxWindow : (m_tolX + m_tolMomentum / track.state()->p());
-              info() << endmsg
-                     << format( "... start plane %1d x%8.2f z%8.1f slope%8.2f tolMatch%7.3f",
-                                myPlane, posX, meanZ, 1000. * slopeX, tolMatch )
-                     << endmsg;
-            }
-
-            // Fit x projection
-            findMatchingHits( MatchingXHits, track, myPlane );
-            if(m_withDebugTool){
-              std::vector<int> xids,uvids;
-              for(auto hit: MatchingXHits){xids.push_back(hit->hit()->lhcbID().lhcbID());}
-              for(auto hit: m_uvHits){uvids.push_back(hit->hit()->lhcbID().lhcbID());}
-              m_debugTool->recordStepInProcess("findMatchingHits",
-                                               m_debugTool->CheckMCinIntermediateHits(xids,uvids));
-            }
-                  
-            //fitXProjection( MatchingXHits, track, myHit );
-            fitXProjection2( MatchingXHits, track, myHit );
-            if(m_withDebugTool){
-              std::vector<int> xids,uvids;
-              for(auto hit: track.hits()){xids.push_back(hit->hit()->lhcbID().lhcbID());}
-              for(auto hit: m_uvHits){uvids.push_back(hit->hit()->lhcbID().lhcbID());}
-              m_debugTool->recordStepInProcess("fitXProjection",
-                                               m_debugTool->CheckMCinIntermediateHits(xids,uvids)); 
-            }
-
-            std::vector< PrDownTrack2 > UVtracks;
-
-            //addUVHits( track, &UVtracks );
-            addUVHits2( track, &UVtracks );
-            if(m_withDebugTool){
-              std::vector<int> ids;
-              for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
-              m_debugTool->recordStepInProcess("addUVHits",
-                                               m_debugTool->CheckMCinTrackHits(ids)); 
-            }
-                  
-            if(0==UVtracks.size()) continue;
-
-            for(auto trc : UVtracks) {
-                    
-              fitAndRemove2( trc );
-              //fitAndRemove( trc );
-              if(m_withDebugTool){
-                std::vector<int> ids;
-                for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
-                m_debugTool->recordStepInProcess("fitAndRemove",
-                                                 m_debugTool->CheckMCinTrackHits(ids)); 
-              }
-              //Beampipe cut - once again after the fit
-              //TODO: Hardcoded for now - we may want to have this as a tuning parameter
-              //TODO: We might want to reconsider if this is necessary twice
-              if(std::sqrt(track.xMagnet()*track.xMagnet()+track.yMagnet()*track.yMagnet()) < 80) continue;
-
-              if(legitCandidate( trc ) ){
-                trackCands.push_back( trc );
-                if(m_withDebugTool){
-                  std::vector<int> ids;
-                  for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
-                  m_debugTool->recordStepInProcess("acceptCandidate",
-                                                   m_debugTool->CheckMCinTrackHits(ids)); 
-                }//debug tool
-              }//legit candidate
-            }//uvtracks
-          }//xhits
-        }
-        
-        //== Debug the track.
-        if ( 0==trackCands.size() ) {
           if ( m_printing ) {
-            info() << format( "Track %3d P=%7.2f GeV --- discarded, not enough planes",
-                              tr->key(),  .001*track.moment() ) << endmsg;
+            const double tolMatch = (std::abs(track.state()->p() / m_tolMomentum) < 1. / (m_maxWindow - m_tolX)) ?
+              m_maxWindow : (m_tolX + m_tolMomentum / track.state()->p());
+            info() << endmsg 
+                   << format( "... start plane %1d x%8.2f z%8.1f slope%8.2f tolMatch%7.3f",
+                              myPlane, posX, meanZ, 1000. * slopeX, tolMatch )
+                   << endmsg;
+          }        
+
+          // Fit x projection
+          findMatchingHits( MatchingXHits, track, myPlane );
+          if(m_withDebugTool){
+            std::vector<int> xids,uvids;
+            for(auto hit: MatchingXHits){xids.push_back(hit->hit()->lhcbID().lhcbID());}
+            for(auto hit: m_uvHits){uvids.push_back(hit->hit()->lhcbID().lhcbID());}
+            m_debugTool->recordStepInProcess("findMatchingHits",
+                                             m_debugTool->CheckMCinIntermediateHits(xids,uvids));
+            xids.clear();uvids.clear();
           }
-        } else {
 
-          std::stable_sort(trackCands.begin(), trackCands.end(), sortByChi2Tr);
-          std::stable_sort(trackCands.begin(), trackCands.end(), sortByHitsTr);
-          std::vector<PrDownTrack2> trackCandsClean;
-          trackCandsClean.reserve(trackCands.size());
-
-
-          for(unsigned count = 0; count < trackCands.size(); count++) {
-
-            //TODO: Hardcoded for now - we may want to have this as a tuning parameter
-            //TODO: We might want to reconsider the meaning of this cut
-            if(std::sqrt(track.slopeX()*track.slopeX()+track.slopeY()*track.slopeY()) < 0.010) continue;
-            track = trackCands[count];
-
-            bool clone = false;
-            for ( std::vector<PrDownTrack2>::const_iterator itT1 = trackCandsClean.begin(); trackCandsClean.end() != itT1; ++itT1 ) {
-              PrDownTrack2 testTrack = *itT1;
-
-              PrUTHits::const_iterator itHa;
-              PrUTHits::const_iterator itHb;
-
-              int hitsmin = std::min(testTrack.hits().size(), track.hits().size());
-              int hitscommon = 0;
-              for ( itHa = track.hits().begin(); track.hits().end() != itHa; itHa++ ) {
-                for ( itHb = testTrack.hits().begin(); testTrack.hits().end() != itHb; itHb++ ) {
-                  if((*itHa)->hit()->lhcbID()==(*itHb)->hit()->lhcbID())
-                    hitscommon++;
-                }
-              }
-                      
-              double common = (double)hitscommon/(double)hitsmin;
-              
-              //TODO: Hardcoded for now - we may want to have this as a tuning parameter
-              if(common>0.66) {
-                clone = true;
-                break;
-              }
-            }
-            if(clone) break;
-
-            trackCandsClean.push_back(track);
+          fitXProjection( MatchingXHits, track, myHit );
+          if(m_withDebugTool){
+            std::vector<int> xids,uvids;
+            for(auto hit: track.hits()){xids.push_back(hit->hit()->lhcbID().lhcbID());}
+            for(auto hit: m_uvHits){uvids.push_back(hit->hit()->lhcbID().lhcbID());}
+            m_debugTool->recordStepInProcess("fitXProjection",
+                                             m_debugTool->CheckMCinIntermediateHits(xids,uvids));
+            xids.clear();uvids.clear();
           }
-          
-          std::stable_sort(trackCandsClean.begin(), trackCandsClean.end(), sortByChi2Tr);
-          unsigned maxcount = 0;
-          if(trackCandsClean.size()> m_tracksToKeep)
-            maxcount = m_tracksToKeep;
-          else
-            maxcount = trackCandsClean.size();
 
+          // Fit 3D track
+          addUVHits( track );
           if(m_withDebugTool){
             std::vector<int> ids;
             for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
-            m_debugTool->recordStepInProcess("beforeStore",
+            m_debugTool->recordStepInProcess("addUVHits",
+                                             m_debugTool->CheckMCinTrackHits(ids)); 
+            ids.clear();
+          }
+
+          if ( 3 > track.hits().size() ) {
+            if ( m_printing ) info() << " === not enough hits" << endmsg;
+            continue;
+          }
+          //fitAndRemove( track );
+          fitAndRemove3( track );
+          if(m_withDebugTool){
+            std::vector<int> ids;
+            for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
+            m_debugTool->recordStepInProcess("fitAndRemove",
+                                             m_debugTool->CheckMCinTrackHits(ids)); 
+            ids.clear();
+          }
+
+          // Check if candidate is better than the old one
+          if ( !acceptCandidate( track, bestTrack, maxPoints, minChisq ) ) continue;
+          if(m_withDebugTool){
+            std::vector<int> ids;
+            for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
+            m_debugTool->recordStepInProcess("acceptCandidate",
                                              m_debugTool->CheckMCinTrackHits(ids)); 
           }
-          for(unsigned count = 0; count < maxcount; count++) {
-            track = trackCandsClean[count];
-
-            if(count == 0) {
-              track.sortFinalHits();
               
+          // New best track
+          bestTrack = track;
+          nbOK++;
+        }
+      }
+
+      //== Debug the track.
+      if ( 0 == nbOK ) {
+        if ( m_printing ) {
+          info() << format( "Track %3d P=%7.2f GeV --- discarded, not enough planes",
+                            tr->key(),  .001*track.moment() ) << endmsg;
+        }
+      } else {
+
+        // Best one  
+        track = bestTrack;
+
+        // add hits in x layers in overlap regions of UT
+        addOverlapRegions( track );     
+        if(m_withDebugTool){
+          std::vector<int> ids;
+          for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
+          m_debugTool->recordStepInProcess("beforeStore",
+                                           m_debugTool->CheckMCinTrackHits(ids)); 
+        }
+        //=== Store the track
+        storeTrack( track, finalTracks, tr , updated_TSeeds);
+
+      }
+
+    } else {
+      if ( 2 < ( m_xHits.size() +  m_uvHits.size() ) ) {
+        //==============================================================
+        // Try to find a candidate: X first, then UV.
+        //==============================================================
+
+        for ( auto itH : m_xHits ) {
+          if ( m_doTiming ) m_timerTool->start( m_buildTime );
+          PrUTHit* myHit = itH;
+          if ( myHit->hit()->testStatus( Tf::HitBase::UsedByPatDownstream ) ) continue;
+          double meanZ = myHit->z();
+          double posX  = myHit->x( );
+          int myPlane  = myHit->planeCode();
+
+          if ( 1!=myHit->mask() ) continue;
+
+          track.startNewCandidate();
+
+          //Beampipe cut
+          //TODO: Hardcoded for now - we may want to have this as a tuning parameter
+          if(std::sqrt(track.xMagnet()*track.xMagnet()+track.yMagnet()*track.yMagnet()) < 80) continue;
+          // Create track estimate with one x hit
+          double slopeX = (track.xMagnet() - posX + track.sagitta( meanZ)) / (track.zMagnet() - meanZ);
+          track.setSlopeX( slopeX );
+
+          if ( m_printing ) {
+            const double tolMatch = (std::abs(track.state()->p() / m_tolMomentum) < 1. / (m_maxWindow - m_tolX)) ?
+              m_maxWindow : (m_tolX + m_tolMomentum / track.state()->p());
+            info() << endmsg
+                   << format( "... start plane %1d x%8.2f z%8.1f slope%8.2f tolMatch%7.3f",
+                              myPlane, posX, meanZ, 1000. * slopeX, tolMatch )
+                   << endmsg;
+          }
+
+          // Fit x projection
+          findMatchingHits( MatchingXHits, track, myPlane );
+          if(m_withDebugTool){
+            std::vector<int> xids,uvids;
+            for(auto hit: MatchingXHits){xids.push_back(hit->hit()->lhcbID().lhcbID());}
+            for(auto hit: m_uvHits){uvids.push_back(hit->hit()->lhcbID().lhcbID());}
+            m_debugTool->recordStepInProcess("findMatchingHits",
+                                             m_debugTool->CheckMCinIntermediateHits(xids,uvids));
+            xids.clear();uvids.clear();
+          }
+          fitXProjection( MatchingXHits, track, myHit );
+          if(m_withDebugTool){
+            std::vector<int> xids,uvids;
+            for(auto hit: track.hits()){xids.push_back(hit->hit()->lhcbID().lhcbID());}
+            for(auto hit: m_uvHits){uvids.push_back(hit->hit()->lhcbID().lhcbID());}
+            m_debugTool->recordStepInProcess("fitXProjection",
+                                             m_debugTool->CheckMCinIntermediateHits(xids,uvids)); 
+            xids.clear();uvids.clear();
+          }
+                  
+          std::vector< PrDownTrack > UVtracks;
+
+          addUVHits( track, &UVtracks );
+          if(m_withDebugTool){
+            std::vector<int> ids;
+            for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
+            m_debugTool->recordStepInProcess("addUVHits",
+                                             m_debugTool->CheckMCinTrackHits(ids)); 
+            ids.clear();
+          }
+            
+          if(0==UVtracks.size()) continue;
+
+          for(auto trc : UVtracks) {
+
+
+            //fitAndRemove( trc );
+            fitAndRemove3( trc );
+            if(m_withDebugTool){
+              std::vector<int> ids;
+              for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
+              m_debugTool->recordStepInProcess("fitAndRemove",
+                                               m_debugTool->CheckMCinTrackHits(ids)); 
+              ids.clear();
+            }
+            //Beampipe cut - once again after the fit
+            //TODO: Hardcoded for now - we may want to have this as a tuning parameter
+            //TODO: We might want to reconsider if this is necessary twice
+            if(std::sqrt(track.xMagnet()*track.xMagnet()+track.yMagnet()*track.yMagnet()) < 80) continue;
+
+            if(legitCandidate( trc ) ){
+              trackCands.push_back( trc );
+              if(m_withDebugTool){
+                std::vector<int> ids;
+                for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
+                m_debugTool->recordStepInProcess("acceptCandidate",
+                                                 m_debugTool->CheckMCinTrackHits(ids)); 
+                ids.clear();
+                            
+              }//debug tool
+            }//legit candidate
+          }//uvtracks
+        }//xhits
+      }
+
+      //== Debug the track.
+      if ( 0==trackCands.size() ) {
+        if ( m_printing ) {
+          info() << format( "Track %3d P=%7.2f GeV --- discarded, not enough planes",
+                            tr->key(),  .001*track.moment() ) << endmsg;
+        }
+      } else {
+
+        std::stable_sort(trackCands.begin(), trackCands.end(), sortByChi2Tr);
+        std::stable_sort(trackCands.begin(), trackCands.end(), sortByHitsTr);
+        std::vector<PrDownTrack> trackCandsClean;
+        trackCandsClean.reserve(trackCands.size());
+
+              
+        for(unsigned count = 0; count < trackCands.size(); count++) {
+
+          //TODO: Hardcoded for now - we may want to have this as a tuning parameter
+          //TODO: We might want to reconsider the meaning of this cut
+          if(std::sqrt(track.slopeX()*track.slopeX()+track.slopeY()*track.slopeY()) < 0.010) continue;
+          track = trackCands[count];
+
+          bool clone = false;
+          for ( std::vector<PrDownTrack>::const_iterator itT1 = trackCandsClean.begin(); trackCandsClean.end() != itT1; ++itT1 ) {
+            PrDownTrack testTrack = *itT1;
+
+            PrUTHits::const_iterator itHa;
+            PrUTHits::const_iterator itHb;
+
+            int hitsmin = std::min(testTrack.hits().size(), track.hits().size());
+            int hitscommon = 0;
+            for ( itHa = track.hits().begin(); track.hits().end() != itHa; itHa++ ) {
+              for ( itHb = testTrack.hits().begin(); testTrack.hits().end() != itHb; itHb++ ) {
+                if((*itHa)->hit()->lhcbID()==(*itHb)->hit()->lhcbID())
+                  hitscommon++;
+              }
+            }
+                      
+            double common = (double)hitscommon/(double)hitsmin;
+                     
+            //TODO: Hardcoded for now - we may want to have this as a tuning parameter
+            if(common>0.66) {
+              clone = true;
+              break;
+            }
+          }
+          if(clone) break;
+
+          trackCandsClean.push_back(track);
+        }
+
+        std::stable_sort(trackCandsClean.begin(), trackCandsClean.end(), sortByChi2Tr);
+        unsigned maxcount = 0;
+        if(trackCandsClean.size()> m_tracksToKeep)
+          maxcount = m_tracksToKeep;
+        else
+          maxcount = trackCandsClean.size();
+
+        if(m_withDebugTool){
+          std::vector<int> ids;
+          for(auto hit:track.hits()){ids.push_back(hit->hit()->lhcbID().lhcbID());}
+          m_debugTool->recordStepInProcess("beforeStore",
+                                           m_debugTool->CheckMCinTrackHits(ids)); 
+          ids.clear();
+        }
+        for(unsigned count = 0; count < maxcount; count++) {
+          track = trackCandsClean[count];
+
+          if(count == 0) {
+            track.sortFinalHits();
+
+            //=== Store the track
+            storeTrack( track, finalTracks, tr, updated_TSeeds);
+          }
+
+          if(count > 0) {
+            //std::cout << trackCandsClean[count].chisq()-trackCandsClean[0].chisq() << std::endl;
+            if(trackCandsClean[count].chisq()-trackCandsClean[0].chisq()<m_deltaChisq) {
+              // add hits in x layers in overlap regions of UT
+              //////addOverlapRegions( track );
+              //////if ( m_maxChisq < track.chisq() ) continue;
+              //////if ( m_maxDisplY < std::abs(track.displY()) ) continue;
+
+
+
+              track.sortFinalHits();
+
               //=== Store the track
               storeTrack( track, finalTracks, tr,updated_TSeeds );
-            }
-
-            if(count > 0) {
-              //std::cout << trackCandsClean[count].chisq()-trackCandsClean[0].chisq() << std::endl;
-              if(trackCandsClean[count].chisq()-trackCandsClean[0].chisq()<m_deltaChisq) {
-                // add hits in x layers in overlap regions of UT
-                //////addOverlapRegions( track );
-                //////if ( m_maxChisq < track.chisq() ) continue;
-                //////if ( m_maxDisplY < std::abs(track.displY()) ) continue;
-
-
-
-                track.sortFinalHits();
-
-                //=== Store the track
-                storeTrack( track, finalTracks, tr, updated_TSeeds );
-              }
             }
           }
         }
       }
+    }
   }
-  
 
 
   ///might have to put that back in when we not to decide to veto long tracks
@@ -706,7 +684,7 @@ StatusCode PrDownstream::execute() {
       m_timerTool->stop( m_downTime );
   }
 
-  
+
   return StatusCode::SUCCESS;
 }
 
@@ -724,95 +702,95 @@ StatusCode PrDownstream::finalize() {
 //  Cleanup already used T-Seeds - New implementation
 //=========================================================================
 void PrDownstream::prepareSeedsNew(LHCb::Tracks* inTracks, std::vector<LHCb::Track*>& myInTracks){
-  LHCb::Tracks* match = getIfExists<LHCb::Tracks>( m_matchLocation );
-  LHCb::Tracks* forward = getIfExists<LHCb::Tracks>( m_forwardLocation );
-  if ( NULL != match ) {
-    if (!m_removeUsed) {
-      myInTracks.insert( myInTracks.end(), inTracks->begin(), inTracks->end() );
-    } else {
-      if (m_printing) debug()<<"Remove seeds and ut hits from Match tracks"<<endmsg;
-      for ( LHCb::Tracks::const_iterator itT = inTracks->begin();
-            inTracks->end() != itT; itT++ ) {
-        LHCb::Track* tr = (*itT);
-        bool forwd = true;
+    LHCb::Tracks* match = getIfExists<LHCb::Tracks>( m_matchLocation );
+    LHCb::Tracks* forward = getIfExists<LHCb::Tracks>( m_forwardLocation );
+    if ( NULL != match ) {
+        if (!m_removeUsed) {
+            myInTracks.insert( myInTracks.end(), inTracks->begin(), inTracks->end() );
+        } else {
+            if (m_printing) debug()<<"Remove seeds and ut hits from Match tracks"<<endmsg;
+            for ( LHCb::Tracks::const_iterator itT = inTracks->begin();
+                    inTracks->end() != itT; itT++ ) {
+                LHCb::Track* tr = (*itT);
+                bool forwd = true;
                 
-        for( auto forwardTr : *forward ) {
-          int ft1 = 0;
-          int ft2 = 0;
-          int ftc = 0;
-          bool hasUT = false;
+                for( auto forwardTr : *forward ) {
+                    int ft1 = 0;
+                    int ft2 = 0;
+                    int ftc = 0;
+                    bool hasUT = false;
 
-          for (std::vector< LHCb::LHCbID>::const_iterator id1 = forwardTr->lhcbIDs().begin();
-               forwardTr->lhcbIDs().end() != id1; ++id1 ) {
-            if(!(*id1).isFT()) continue;
-            for (std::vector< LHCb::LHCbID>::const_iterator id2 = tr->lhcbIDs().begin();
-                 tr->lhcbIDs().end() != id2; ++id2 ) {
-              if(!(*id2).isFT()) continue;
-              if((*id1)==(*id2)) ftc++;
-            }
-          }
-          for (std::vector< LHCb::LHCbID>::const_iterator id1 = forwardTr->lhcbIDs().begin();
-               forwardTr->lhcbIDs().end() != id1; ++id1 ) {
-            if((*id1).isFT()) ft1++;
-            if((*id1).isUT()) hasUT=true;
-          }
-          for (std::vector< LHCb::LHCbID>::const_iterator id2 = tr->lhcbIDs().begin();
-               tr->lhcbIDs().end() != id2; ++id2 ) {
-            if((*id2).isFT()) ft2++;
-          }
+                    for (std::vector< LHCb::LHCbID>::const_iterator id1 = forwardTr->lhcbIDs().begin();
+                            forwardTr->lhcbIDs().end() != id1; ++id1 ) {
+                        if(!(*id1).isFT()) continue;
+                        for (std::vector< LHCb::LHCbID>::const_iterator id2 = tr->lhcbIDs().begin();
+                                tr->lhcbIDs().end() != id2; ++id2 ) {
+                            if(!(*id2).isFT()) continue;
+                            if((*id1)==(*id2)) ftc++;
+                        }
+                    }
+                    for (std::vector< LHCb::LHCbID>::const_iterator id1 = forwardTr->lhcbIDs().begin();
+                            forwardTr->lhcbIDs().end() != id1; ++id1 ) {
+                        if((*id1).isFT()) ft1++;
+                        if((*id1).isUT()) hasUT=true;
+                    }
+                    for (std::vector< LHCb::LHCbID>::const_iterator id2 = tr->lhcbIDs().begin();
+                            tr->lhcbIDs().end() != id2; ++id2 ) {
+                        if((*id2).isFT()) ft2++;
+                    }
                     
-          if(ft1!=0 && ft2!=0 && (double)ftc/(double)std::min(ft1, ft2)>=1 && forwardTr->chi2PerDoF() < m_longChi2 && hasUT) {
-            forwd = false;
-            tagUsedUT( forwardTr );
-          }
-          if ( !forwd ) break;
-        }
+                    if(ft1!=0 && ft2!=0 && (double)ftc/(double)std::min(ft1, ft2)>=1 && forwardTr->chi2PerDoF() < m_longChi2 && hasUT) {
+                        forwd = false;
+                        tagUsedUT( forwardTr );
+                    }
+                    if ( !forwd ) break;
+                }
 
-        //TODO: Keep this in case we want to use both information from the Match and the Forward in the offline tracking
-        /*
-          bool mat =true;
-          if ( m_printing ) debug() << "Seed " << tr->key();
-          for( auto matchTr : *match ) {
-          const SmartRefVector<LHCb::Track>& ancestors = matchTr->ancestors();
-          for ( SmartRefVector<LHCb::Track>::const_iterator itA = ancestors.begin();
-          ancestors.end() != itA; ++itA ) {
-          const LHCb::Track* pt = (*itA);
-          if ( tr == pt ) {
-          if ( m_printing ) debug() << " is used in match " << matchTr->key();
-          if ( m_removeAll || (matchTr->chi2PerDoF() < m_longChi2 && !forwd) ) {
-          if ( m_printing ) debug() << " good longtrack " << matchTr->key()<<endmsg;
-          mat = false;
-          tagUsedUT( matchTr );
-          break;
-          }
-          break;
-          }
-          }
-          if ( !mat ) break;
-          }
+                //TODO: Keep this in case we want to use both information from the Match and the Forward in the offline tracking
+                /*
+                bool mat =true;
+                if ( m_printing ) debug() << "Seed " << tr->key();
+                for( auto matchTr : *match ) {
+                    const SmartRefVector<LHCb::Track>& ancestors = matchTr->ancestors();
+                    for ( SmartRefVector<LHCb::Track>::const_iterator itA = ancestors.begin();
+                            ancestors.end() != itA; ++itA ) {
+                        const LHCb::Track* pt = (*itA);
+                        if ( tr == pt ) {
+                            if ( m_printing ) debug() << " is used in match " << matchTr->key();
+                            if ( m_removeAll || (matchTr->chi2PerDoF() < m_longChi2 && !forwd) ) {
+                                if ( m_printing ) debug() << " good longtrack " << matchTr->key()<<endmsg;
+                                mat = false;
+                                tagUsedUT( matchTr );
+                                break;
+                            }
+                            break;
+                        }
+                    }
+                    if ( !mat ) break;
+                }
 
-          if (mat) {
-          myInTracks.push_back( tr );
-          if ( m_printing ) debug() << " will be processed";
-          }
-          if ( m_printing ) debug() << endmsg;
-        */
-        if (forwd) {
-          myInTracks.push_back( tr );
-          if ( m_printing ) debug() << " will be processed";
-        }
-        if ( m_printing ) debug() << endmsg;
-                
-      }
-    }
-  } else {  //== Copy tracks without ancestor...
-    for(auto tr : *inTracks) {
-      //== Ignore tracks with ancestor = forward...
-      if ( m_removeUsed && 0 < tr->ancestors().size() ) continue;
-      myInTracks.push_back( tr );
-    }
-  }
-}
+                if (mat) {
+                    myInTracks.push_back( tr );
+                    if ( m_printing ) debug() << " will be processed";
+                }
+                if ( m_printing ) debug() << endmsg;
+                */
+                if (forwd) {
+                    myInTracks.push_back( tr );
+                    if ( m_printing ) debug() << " will be processed";
+                }
+                if ( m_printing ) debug() << endmsg;
+
+            }
+            }
+            } else {  //== Copy tracks without ancestor...
+                for(auto tr : *inTracks) {
+                    //== Ignore tracks with ancestor = forward...
+                    if ( m_removeUsed && 0 < tr->ancestors().size() ) continue;
+                    myInTracks.push_back( tr );
+                }
+            }
+            }
 
 //=========================================================================
 //  Cleanup already used T-Seeds
@@ -906,11 +884,9 @@ void PrDownstream::tagUsedUT( const LHCb::Track* tr ) {
 //=========================================================================
 //  Get the PreSelection
 //=========================================================================
-void PrDownstream::getPreSelection( PrDownTrack2& track ) {
+void PrDownstream::getPreSelection( PrDownTrack& track ) {
   // Max Pt around 100 MeV for strange particle decay -> maximum displacement is in 1/p.
   double xPredTol = m_xPredTol2;
-  info()<<"checking track.moment = "<<track.moment()<<endmsg;
-  info()<<"is this >1e-6?"<<endmsg;
   if (std::abs(track.moment()) >  1e-6)
       xPredTol = m_xPredTol / fabs( track.moment() ) + m_xPredTol2;  // P dependance + overal tol.
   double yTol = xPredTol;
@@ -919,53 +895,32 @@ void PrDownstream::getPreSelection( PrDownTrack2& track ) {
   m_uvHits.clear();
 
   //== Collect all hits compatible with the extrapolation, region by region.
-  /*if ( m_printing )*/ info() << "-- collect hits with tolerance " << xPredTol << endmsg;
+  if ( m_printing ) info() << "-- collect hits with tolerance " << xPredTol << endmsg;
 
   for ( int kSta = 0; m_utHitManager->maxStations() > kSta; ++kSta ) {
     for ( int kLay = 0; m_utHitManager->maxLayers() > kLay; ++kLay ) {
       for ( int kReg = 0; m_utHitManager->maxRegions() > kReg; ++kReg ) {
         const Tf::IUTHitCreator::STRegion* reg = m_utHitManager->region( kSta, kLay, kReg );
         const double yReg = track.yAtZ( reg->z() );
-        if ( !reg->isYCompatible( yReg, yTol ) ){
-          info()<<"Threw out region incompatible at "<<yReg<<" with ytolerance "<<yTol<<endmsg;
-          continue;
-        }
-        
+        if ( !reg->isYCompatible( yReg, yTol ) ) continue;
         const double xReg = track.xAtZ( reg->z() );
-        if ( !reg->isXCompatible( xReg, xPredTol ) ){ 
-          info()<<"threw out region incompatible in x at "<<xReg<<" with tolerance"<<xPredTol<<endmsg;
-          continue;
-        }
-        
+        if ( !reg->isXCompatible( xReg, xPredTol ) ) continue;
         Tf::UTStationHitManager<PrUTHit>::HitRange coords = m_utHitManager->hits( kSta, kLay, kReg );
         for(auto hit : coords) {
-
-          if (hit->hit()->ignore()){ 
-            info()<<"ignoring hit "<<hit->hit()->lhcbID().lhcbID()<<endmsg;
-            continue;
-          }
-          
+          if (hit->hit()->ignore()) continue;
           if ( hit->hit()->testStatus( Tf::HitBase::UsedByPatMatch ) ) {
-            /*if (m_printing) debug()*/info()<<"Skip hit "<<hit->hit()->lhcbID()<<endmsg;
+            if (m_printing) debug()<<"Skip hit "<<hit->hit()->lhcbID()<<endmsg;
             continue;
           }
 
           const double yPos   = track.yAtZ( hit->z() );
-          if ( !hit->hit()->isYCompatible( yPos, yTol ) ){
-            info()<<"threw out hit "<<hit->hit()->lhcbID().lhcbID()<<"due to ypos "<<yPos<<"  incompatible with tolerance "<<yTol<<endmsg;
-            continue;
-          }
-          
+          if ( !hit->hit()->isYCompatible( yPos, yTol ) ) continue;
 
           const double yTrack = track.yAtZ( 0. );
           const double tyTr   = track.slopeY();
           updateUTHitForTrack( hit, yTrack, tyTr );
           const double pos    = track.xAtZ( hit->z() );
-          if ( xPredTol < fabs( pos - hit->x() ) ){ 
-            info()<<"threw out hit "<<hit->hit()->lhcbID().lhcbID()<<" due to incompatible position "<<pos<<" - xhitpos "<<hit->x()<<" less than tolerance "<<xPredTol<<endmsg;
-            continue;
-          }
-          
+          if ( xPredTol < fabs( pos - hit->x() ) ) continue;
           hit->hit()->setStatus( Tf::HitBase::UsedByPatDownstream, false );
           hit->setProjection( fabs( hit->x()-pos ) );
           // check if x or stereo hit
@@ -979,9 +934,7 @@ void PrDownstream::getPreSelection( PrDownTrack2& track ) {
             info() << format( "  plane%2d z %8.2f x %8.2f pos %8.2f High%2d dist %8.2f",
                               hit->planeCode(), hit->z(), hit->x(), pos,
                               hit->hit()->sthit()->cluster().highThreshold(), hit->x() - pos);
-            info()<<"calling debug tool now"<<endmsg;
             if ( m_debugTool ) m_debugTool->debugUTCluster( info(), hit );
-            info()<<"done calling debug tool now"<<endmsg;
             info() << endmsg;
           }
         }
@@ -1038,7 +991,6 @@ void PrDownstream::fitAndRemove ( PrDownTrack& track ) {
       if ( m_printing ) {
         info() << format( "   Plane %2d x %7.2f dist %6.3f ",
                           hit->planeCode(), hit->x(), dist );
-        
         if ( m_debugTool ) m_debugTool->debugUTCluster( info(), hit );
         info() << endmsg;
       }
@@ -1141,9 +1093,8 @@ void PrDownstream::fitAndRemove ( PrDownTrack& track ) {
 //=========================================================================
 //  Collect the hits in the other x layer
 //=========================================================================
-void PrDownstream::findMatchingHits( PrUTHits& MatchingXHits, PrDownTrack2& track, int plane ) {
+void PrDownstream::findMatchingHits( PrUTHits& MatchingXHits, PrDownTrack& track, int plane ) {
   MatchingXHits.clear();
-  // reconsider this; HERE
   //search window = const1/momentum + const2
   const double tol = (std::abs(track.state()->p() / m_tolMomentum) < 1. / (m_maxWindow - m_tolX)) ?
     m_maxWindow : (m_tolX + m_tolMomentum / track.state()->p());
@@ -1216,61 +1167,6 @@ void PrDownstream::addUVHits ( PrDownTrack& track, std::vector< PrDownTrack >* U
 
 }
 
-void PrDownstream::addUVHits2 ( PrDownTrack2& track, std::vector< PrDownTrack2 >* UVtracks ) {
-  //search window = const1/momentum + const2
-
-  //first, clone the old track
-  const double tol = (std::abs(track.state()->p() / m_tolMomentum) < 1. / (m_maxWindow - m_tolUV)) ?
-    m_maxWindow : (m_tolUV + m_tolMomentum / track.state()->p());
-  PrUTHits uhits;
-  PrUTHits vhits;
-
-  //TODO: We might reconsider if we can vetoe some of the obviously wrong
-  //combinations right here to save time spend in combinatorics later
-  for(auto hit : m_uvHits) {
-    const double yTrack = track.yAtZ( 0. );
-    const double tyTr   = track.slopeY();
-    updateUTHitForTrack( hit, yTrack, tyTr );
-    const double adist = std::abs( track.distance( hit ) );
-
-
-    if ( adist < tol && 2==hit->mask() ) uhits.push_back( hit );
-    if ( adist < tol && 4==hit->mask() ) vhits.push_back( hit );
-  }
-
-  for(auto uhit : uhits) {
-      for(auto vhit : vhits) {
-        //first, clone the old track
-        PrDownTrack2 newTrack( track );
-          newTrack.hits().push_back( uhit );
-          newTrack.hits().push_back( vhit );
-          newTrack.sortFinalHits();
-          UVtracks->push_back( newTrack );
-      }
-  }
-
-  if(uhits.size()==0) {
-      for(auto vhit : vhits) {
-          //first, clone the old track
-          PrDownTrack2 newTrack( track );
-          newTrack.hits().push_back( vhit );
-          newTrack.sortFinalHits();
-          UVtracks->push_back( newTrack );
-      }
-  }
-
-  if(vhits.size()==0) {
-      for(auto uhit : uhits) {
-          //first, clone the old track
-          PrDownTrack2 newTrack( track );
-          newTrack.hits().push_back( uhit );
-          newTrack.sortFinalHits();
-          UVtracks->push_back( newTrack );
-      }
-  }
-
-}
-
 //=========================================================================
 //  Add the UV hits.
 //=========================================================================
@@ -1288,27 +1184,11 @@ void PrDownstream::addUVHits ( PrDownTrack& track ) {
   track.sortFinalHits();
 }
 
-void PrDownstream::addUVHits2 ( PrDownTrack2& track ) {
-  //search window = const1/momentum + const2
-  const double tol = (std::abs(track.state()->p() / m_tolMomentum) < 1. / (m_maxWindow - m_tolUV)) ?
-    m_maxWindow : (m_tolUV + m_tolMomentum / track.state()->p());
-  for(auto hit : m_uvHits) {
-    const double yTrack = track.yAtZ( 0. );
-    const double tyTr   = track.slopeY();
-    updateUTHitForTrack( hit, yTrack, tyTr );
-    const double adist = std::abs( track.distance( hit ) );
-    if ( adist < tol ) track.hits().push_back( hit );
-  }
-  track.sortFinalHits();
-  
-  
-}
-
 
 //=========================================================================
 //  Check if the new candidate is better than the old one
 //=========================================================================
-bool PrDownstream::legitCandidate( PrDownTrack2& track ){
+bool PrDownstream::legitCandidate( PrDownTrack& track ){
 
   const int nbMeasureOK = track.hits().size();
 
@@ -1323,7 +1203,7 @@ bool PrDownstream::legitCandidate( PrDownTrack2& track ){
     if ( m_printing ) info() << " === Chisq too big " << track.chisq() << endmsg;
     return false;
   }
-  /*
+
   const double deltaP = track.moment() * track.state()->qOverP() - 1.;
   //== Compatible momentum
   if ( m_deltaP < fabs(deltaP) ) {
@@ -1331,7 +1211,7 @@ bool PrDownstream::legitCandidate( PrDownTrack2& track ){
     if ( !m_magnetOff )return false;
     return false;
   }
-  */
+
   //== Count if enough with high threshold
   int nbHigh = 0;
   int nbUsed = 0;
@@ -1364,7 +1244,7 @@ bool PrDownstream::legitCandidate( PrDownTrack2& track ){
 //=========================================================================
 //  Check if the new candidate is better than the old one
 //=========================================================================
-bool PrDownstream::acceptCandidate( PrDownTrack2& track, PrDownTrack2&  bestTrack,
+bool PrDownstream::acceptCandidate( PrDownTrack& track, PrDownTrack&  bestTrack,
                                      int& maxPoints, double& minChisq ){
 
   const int nbMeasureOK = track.hits().size();
@@ -1380,12 +1260,22 @@ bool PrDownstream::acceptCandidate( PrDownTrack2& track, PrDownTrack2&  bestTrac
     if ( m_printing ) info() << " === Chisq too big " << track.chisq() << endmsg;
     return false;
   }
-  /*
+
   const double deltaP = track.moment() * track.state()->qOverP() - 1.;
   //== Compatible momentum
   if ( m_deltaP < fabs(deltaP) ) {
     if ( m_printing ) info() << " === Deltap too big " << deltaP << endmsg;
     if ( !m_magnetOff )return false;
+    return false;
+  }
+
+  //compatible with x position?
+  //HERE
+  /*  PrDownTrack2 tr2(track);
+  double q = (track.moment()>0)?1:-1;
+  double zmag_new = 5391. -1.173e5*q*track.moment() + 1.027e+09*track.moment()*track.moment();
+  if(fabs(tr2.xAtZ(zmag_new) - (track.state()->x() + track.state()->tx()*(track.state()->z()-zmag_new)))>30){//tolerance of 30 mm
+    info()<<" not compatible with new xmagnet"<<endmsg;
     return false;
   }
   */
@@ -1420,8 +1310,7 @@ bool PrDownstream::acceptCandidate( PrDownTrack2& track, PrDownTrack2&  bestTrac
 
   if ( m_printing ) {
     info() << format( "  *** Good candidate ***  slope%8.2f displX%8.2f Y%8.2f Chi2%8.2f",
-                      //1000.*track.slopeX(), track.displX(), track.displY(), track.chisq() );
-                      1000.*track.slopeX(), track.xAtZ(0), track.yAtZ(0), track.chisq() );
+                      1000.*track.slopeX(), track.displX(), track.displY(), track.chisq() );
     if ( 0 == bestTrack.hits().size() ) {
       info() << " OK"  << endmsg;
     } else {
@@ -1477,11 +1366,9 @@ bool PrDownstream::acceptCandidate( PrDownTrack2& track, PrDownTrack2&  bestTrac
 //=========================================================================
 //  Store Track
 //=========================================================================
-void PrDownstream::storeTrack( PrDownTrack2& track, LHCb::Tracks* finalTracks, LHCb::Track* tr, LHCb::Tracks* updatedSeeds){
+void PrDownstream::storeTrack( PrDownTrack& track, LHCb::Tracks* finalTracks, LHCb::Track* tr,LHCb::Tracks* updatedSeeds ){
   //=== Store the tracks
   //== new LHCb::Track
-  info()<<"starting store track"<<endmsg;
-  
   LHCb::Track* dTr = new LHCb::Track();
   //== add ancestor
   dTr->addToAncestors( tr );
@@ -1554,20 +1441,20 @@ void PrDownstream::storeTrack( PrDownTrack2& track, LHCb::Tracks* finalTracks, L
     st->setQOverP(QOverP);
   }
   dTr->addToStates(newstates);
+
   //write all the extra info to the track before storing
   if(m_withDebugTool){
-    std::cout<<"storing track information"<<std::endl;
+    //std::cout<<"storing track information"<<std::endl;
     m_debugTool->writeExtraInfoToDownstreamTrack(*dTr);
-    m_debugTool->writeExtraInfoToSeed(*dTr,*tr);
+    m_debugTool->writeExtraInfoToSeed(*tr);
   }
-  
-  
+
   //== Save track
   finalTracks->insert( dTr );
   if(m_withDebugTool){
     updatedSeeds->insert(tr);
   }
-  
+
 }
 
 
@@ -1592,56 +1479,12 @@ void PrDownstream::fitXProjection( PrUTHits& xHits, PrDownTrack& track, PrUTHit*
   }
   track = bestTrack;
 }
-//added this, update the header
-void PrDownstream::fitXProjection2( PrUTHits& xHits, PrDownTrack2& track, PrUTHit* firstHit ){
-  //change this to instead fit a line to two x points, then compare to the xmagnet position.
-  // I use a simple chi2 for comparison.
-  // should save time in matrix inversion, etc.
-  //catch if there is no second hit, as before
-  track.hits().push_back(firstHit);
-  PrDownTrack2 bestTrack(track);
-  PrDownTrack2 newTrack(track);
-  double distSave(10000.);
-  double alpha_x2 = -0.0062195;
-  double beta_x2 = 1843.;
-  double q = (track.moment()>0)?1:-1;
-  
-  double tolerance = 30;//mm, just a guess for now.
-  for( auto hit: xHits ){
-    //adjust x2 hit to be on the new line.
-    double beginX = firstHit->x();
-    double endX = hit->x();
-    if(hit->planeCode()==3){
-      endX-= alpha_x2 *q + beta_x2/newTrack.moment();
-    }
-    else{
-      beginX-= alpha_x2 *q + beta_x2/newTrack.moment();
-    }
-    
-    //form x candidate
-    
-    double slopex = (beginX - endX)/(firstHit->z() - hit->z());
-    newTrack.setSlopeX(slopex);
-    double x0 = (beginX + endX - slopex*(firstHit->z() + hit->z()))/2.;
-    newTrack.setXat0(x0);
-    double xAtZmagTest = x0+ slopex*track.zMagnet();
-    double dist = xAtZmagTest - track.xMagnet();
-    double int_chi2 = (dist*dist)/(tolerance*tolerance);
-    
-    if(int_chi2<10 && fabs(dist)<fabs(distSave)){
-      distSave = dist;
-      newTrack.hits().push_back(hit);
-      bestTrack = newTrack;
-    }
-  }
-  track = bestTrack;
-}
 
 //=============================================================================
 // This is needed for tracks which have more than one x hit in one layer
 //=============================================================================
 
-void PrDownstream::addOverlapRegions( PrDownTrack2& track ){
+void PrDownstream::addOverlapRegions( PrDownTrack& track ){
   bool hitAdded = false;
   for( auto hit : m_xHits ) {
     if ( hit->hit()->testStatus( Tf::HitBase::UsedByPatDownstream )) continue;
@@ -1655,17 +1498,14 @@ void PrDownstream::addOverlapRegions( PrDownTrack2& track ){
   if ( hitAdded ) {
       track.sortFinalHits();
       //fitAndRemove( track );
-      fitAndRemove2( track );
+      fitAndRemove3( track );
   }
 }
 
-
-
-//=========================================================================
-//  Fit and remove the worst hit, as long as over tolerance
-//=========================================================================
-void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
-
+void PrDownstream::fitAndRemove3 ( PrDownTrack& tr ) {
+  //make PrDownTrack2 out of PrDownTrack.
+  PrDownTrack2 track(tr);
+  
   if ( 2 > track.hits().size() ) return;  // no fit if single point !
   double ty_beta = 1.869;
   double y_beta = -3678;
@@ -1986,6 +1826,7 @@ void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
       }
     }
     std::cout<<"Total chi2 = "<<internal_chi2<<std::endl;
+
     nit++;
     guessX = newx;
     guessSX = newsx;
@@ -2036,6 +1877,16 @@ void PrDownstream::fitAndRemove2 ( PrDownTrack2& track ) {
     }
     
   } while (again);
+  
+  
+  //now that everything is written, update the old track.
+  tr.setChisq(track.chisq());
+  tr.hits().clear();
+  for(auto hit: track.hits()) tr.hits().push_back(hit);
+  tr.setSlopeX(track.slopeX());
+  tr.setSlopeY(track.slopeY());
+  tr.updateX(tr.xAtZ(tr.zMagnet()) - track.xAtZ(tr.zMagnet()),0);
+  tr.setDisplY(tr.yAtZ(tr.zMagnet()) - track.yAtZ(tr.zMagnet()));
   
   return ;
   

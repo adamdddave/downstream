@@ -10,7 +10,7 @@
 
 #include "PrKernel/PrUTHit.h"
 #include "TfKernel/RecoFuncs.h"
-
+#include "PrDownTrack.h"
 /** @class PrDownTrack2 PrDownTrack2.h
  *  Track helper for Downstream track search
  *  Adapted from PrDownTrack to accomodate the new chi2 calculation better
@@ -34,6 +34,9 @@ public:
                 //const std::vector<double>& yParams,
                 //double errZMag,
                 double magnetScale );
+  //constructor out of PrDownTrack
+  PrDownTrack2( PrDownTrack &tr);
+
   virtual ~PrDownTrack2( ) {} ///< Destructor
   LHCb::Track* track() const {return m_seed_track;}//tseed things
   LHCb::State* state() const {return m_seed_state;}//same

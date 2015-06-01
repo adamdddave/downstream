@@ -33,8 +33,10 @@ struct TSeed_Analyzer
  *  @author Olivier Callot
  *  @date   2007-10-22
  */
+
 class PrDebugUTTruthTool : public GaudiTool, virtual public IPrDebugUTTool {
-public: 
+public:    
+
   /// Standard constructor
   PrDebugUTTruthTool( const std::string& type, 
                        const std::string& name,
@@ -54,11 +56,13 @@ public:
   
   virtual void recordStepInProcess(std::string step, bool result);
   
+  virtual void resetflags();
+  
   //virtual void write_info_to_TSeed(LHCb::Track& seed, std::string OutputLocation);
   
   virtual StatusCode writeExtraInfoToDownstreamTrack(LHCb::Track& dsTrack);
 
-  virtual StatusCode writeExtraInfoToSeed(LHCb::Track& dTr, LHCb::Track& seed);
+  virtual StatusCode writeExtraInfoToSeed(LHCb::Track& seed);
 
   virtual bool isIDOnMCParticle(LHCb::LHCbID id, LHCb::Track& track);//ad
   
@@ -79,8 +83,8 @@ public:
                             LHCb::Track * track);
   virtual void PrintHitTable(PrUTHit* hit);
   virtual void PrintHitTableShort(const PrUTHit* hit);
-  
-  
+  virtual void ForceMCHits(PrUTHits& hits);
+      
 protected:
 
 private:

@@ -19,7 +19,6 @@
 class IPrDebugUTTool;
 class DeSTDetector;
 class PrDownTrack;
-class PrDownTrack2;
 
 namespace LHCb {
   class Track;
@@ -40,7 +39,9 @@ namespace LHCb {
  *
  *  @author Georg Krocker
  *  @date   2014-07-04
- *  @author
+ *
+ *  @author Adam Davis
+ *  @date 2015-01-06
  */
 
 class PrDownstream : public GaudiAlgorithm {
@@ -80,7 +81,7 @@ protected:
   *
   * @param track Initial Downstream track candidate
   */
-  void getPreSelection( PrDownTrack2& track );
+  void getPreSelection( PrDownTrack& track );
 
   /**
   * @brief Fit XUVX track candidate and remove outliers
@@ -88,7 +89,6 @@ protected:
   * @param track Downstream track candidate
   */
   void fitAndRemove( PrDownTrack& track );
-  void fitAndRemove2( PrDownTrack2& track );
 
   /**
   * @brief Find matching X hits in other X layer based on the Downstream track that has already one X hit
@@ -97,7 +97,7 @@ protected:
   * @param track Downstream track candidate
   * @param plane Layer of the first X hits already on the track 
   */
-  void findMatchingHits( PrUTHits& MatchingXHits, PrDownTrack2& track, int plane ) ;
+  void findMatchingHits( PrUTHits& MatchingXHits, PrDownTrack& track, int plane ) ;
 
   /**
   * @brief Update Downstream track to full LHCb::Track and push to output container
@@ -106,7 +106,7 @@ protected:
   * @param finalTracks Output container
   * @param tr Initial T-Seed
   */
-  void storeTrack( PrDownTrack2& track, LHCb::Tracks* finalTracks, LHCb::Track* tr, LHCb::Tracks* updatedSeeds );
+  void storeTrack( PrDownTrack& track, LHCb::Tracks* finalTracks, LHCb::Track* tr, LHCb::Tracks* updatedSeeds );
 
   /**
   * @brief Searches matching hits in UV layers based on the track candidate with
@@ -116,8 +116,7 @@ protected:
   * @param UVtracks Vector of track candidates
   */
   void addUVHits( PrDownTrack& track, std::vector< PrDownTrack >* UVtracks );
-  void addUVHits2 ( PrDownTrack2& track, std::vector< PrDownTrack2 >* UVtracks ) ;
-  
+
   /**
   * @brief Searches matching hits in UV layers based on the track candidate with
   * X hits. All found hits are added to the track candidate. 
@@ -125,7 +124,6 @@ protected:
   * @param track Downstream track candidate
   */
   void addUVHits( PrDownTrack& track );
-  void addUVHits2( PrDownTrack2& track );
 
   /**
   * @brief Tags hits as used that where already used on a long track 
@@ -142,8 +140,7 @@ protected:
   * @param myHit First hit on the track
   */
   void fitXProjection( PrUTHits& xHits, PrDownTrack& track, PrUTHit* myHit );
-  void fitXProjection2( PrUTHits& xHits, PrDownTrack2& track, PrUTHit* myHit );
-  
+
   /**
   * @brief Checks if final Downstream candidate passes selection criteria (new
   * implementation of acceptCandidate)
@@ -152,8 +149,7 @@ protected:
   *
   * @return 
   */
-  //bool legitCandidate( PrDownTrack& track );
-  bool legitCandidate( PrDownTrack2& track );
+  bool legitCandidate( PrDownTrack& track );
 
 
   /**
@@ -167,17 +163,18 @@ protected:
   *
   * @return 
   */
-  //bool acceptCandidate( PrDownTrack& track, PrDownTrack& bestTrack, int& maxPoints, double& minChisq );
-  bool acceptCandidate( PrDownTrack2& track, PrDownTrack2& bestTrack, int& maxPoints, double& minChisq );
+  bool acceptCandidate( PrDownTrack& track, PrDownTrack& bestTrack, int& maxPoints, double& minChisq );
 
   /**
   * @brief Add X hits in overlap regions (if any) and fit again
   *
   * @param track The Downstream track candidate
   */
-  //void addOverlapRegions( PrDownTrack& track );
-  void addOverlapRegions( PrDownTrack2& track );
+  void addOverlapRegions( PrDownTrack& track );
 
+  //new fit and remove
+  void fitAndRemove3 ( PrDownTrack& tr );
+  
 private:
   int           m_downTime;
   int           m_buildTime;
@@ -247,11 +244,12 @@ private:
   ISequencerTimerTool* m_timerTool;
   bool m_doTiming;
   
-  int m_number_Iterations_new_chi2;
   bool m_printVerbose;//print verbose hit info or otherwise.
+  bool m_number_Iterations_new_chi2;
+  bool m_forceMChits;
+  
   //add print statements
-  
-  
+
 
 };
 #endif // PRDOWNSTREAM_H

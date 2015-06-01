@@ -53,8 +53,8 @@ StatusCode PrDebugUTTruthTool::initialize()
   if (sc.isFailure()) return Error("Failed to initialize", sc);
 
   m_tracker = getDet<DeSTDetector>(DeSTDetLocation::UT);
-  m_flags["reconstructible_asLong"] = false;
-  m_flags["reconstructible_asDown"] = false;
+  m_flags["ReconstructibleAsLong"] = false;
+  m_flags["ReconstructibleAsDown"] = false;
   m_flags["getPreSelection"] = false;
   m_flags["findMatchingHits"] = false;
   m_flags["fitXProjection"] = false;
@@ -80,17 +80,17 @@ void PrDebugUTTruthTool::debugUTClusterOnTrack (  const LHCb::Track* track,
                                                   const PrUTHits::const_iterator beginCoord,
                                                   const PrUTHits::const_iterator endCoord   ) {
   //== Get the truth on this track
-  std::cout<<"starting debug UT cluster on track"<<std::endl;
+  //std::cout<<"starting debug UT cluster on track"<<std::endl;
   std::string containerName = track->parent()->registry()->identifier();
-  std::cout<<"containerName = "<<containerName<<std::endl;
+  //std::cout<<"containerName = "<<containerName<<std::endl;
   std::string linkerName = "Link/"+containerName;
-  std::cout<<"linkerName = "<<linkerName<<std::endl;
+  //std::cout<<"linkerName = "<<linkerName<<std::endl;
   
   if ( "/Event/" == containerName.substr(0,7) ) {
     linkerName = "Link/" + containerName.substr(7);
   }
-  std::cout<<"linker name after check for event is "<<linkerName<<std::endl;
-  std::cout<<"exist<LHCb::LinksByKey>( linkerName ) = "<<exist<LHCb::LinksByKey>( linkerName )<<std::endl;
+  //std::cout<<"linker name after check for event is "<<linkerName<<std::endl;
+  //  std::cout<<"exist<LHCb::LinksByKey>( linkerName ) = "<<exist<LHCb::LinksByKey>( linkerName )<<std::endl;
   
   if ( exist<LHCb::LinksByKey>( linkerName ) ) {
     LinkedTo<LHCb::MCParticle, LHCb::Track> trLink( evtSvc(), msgSvc(), containerName );
@@ -167,8 +167,11 @@ void PrDebugUTTruthTool::debugUTCluster( MsgStream& msg, const PrUTHit* hit ) {
 //=============================================================================
 
 void PrDebugUTTruthTool::recordStepInProcess(std::string step,bool result){
-  m_flags[step] |= result;//don't change things if we already have the right answer.
-  info()<<"Recorded for step "<<step<<" result"<<result<<endmsg;
+  if(!m_flags[step]){
+    m_flags[step]|=result;
+  }
+    //don't change things if we already have the right answer.
+  debug()<<"Recorded for step "<<step<<" result"<<result<<endmsg;
 }
 //=============================================================================
 // Extra method from PrAddUTHits to check the hits form the UT if it's on the track
@@ -427,7 +430,7 @@ bool PrDebugUTTruthTool::CheckMCinIntermediateHits(std::vector<int> containerx,
                   || ngood_x1+ngood_x2+ngood_v>2//x1,v, x2 fired
                   || ngood_x2+ngood_u+ngood_v >2//u,v,x2 fired
                   || ngood_x1+ngood_u+ngood_v >2)?true:false;//x1,u,v fired
-  info()<<"In check intermediate hits, result is "<<the_ans<<endmsg;
+  debug()<<"In check intermediate hits, result is "<<the_ans<<endmsg;
   
   return the_ans;
 }
@@ -499,14 +502,14 @@ bool PrDebugUTTruthTool::isPreselGood(std::vector<LHCb::LHCbID> x1ids,
     m_x2_matching_map[x2id.lhcbID()]=isIDOnMCParticle(x2id,*track);
     if(m_x2_matching_map[x2id.lhcbID()]==1) nx2_good++;
   }
-  std::cout<<"In Checking Preselection"<<std::endl;
-  std::cout<<"number of good hits: x1 "<<nx1_good<<", u "<<nu_good<<", v "<<nv_good<<", x2 "<<nx2_good
-           <<std::endl;
+  debug()<<"In Checking Preselection"<<endmsg;
+  debug()<<"number of good hits: x1 "<<nx1_good<<", u "<<nu_good<<", v "<<nv_good<<", x2 "<<nx2_good
+           <<endmsg;
   bool the_ans = (nx1_good+nx2_good+nu_good >2 //x1,u,x2 fired
                   || nx1_good+nx2_good+nv_good>2//x1,v, x2 fired
                   || nx2_good+nu_good+nv_good >2//u,v,x2 fired
                   || nx1_good+nu_good+nv_good >2)?true:false;//x1,u,v fired
-  std::cout<<"result from is presel good = "<<the_ans<<std::endl;
+  debug()<<"result from is presel good = "<<the_ans<<endmsg;
   
   return the_ans;
 }
@@ -615,6 +618,7 @@ StatusCode PrDebugUTTruthTool::writeExtraInfoToDownstreamTrack(LHCb::Track& dsTr
   //write the extra info of the algorithm to the downstream track
   //for use with PrDownstreamChecker.
   //first write all the info from the flags
+    
   if(!dsTrack.addInfo(1801,m_flags["getPreSelection"]))Warning("Could not add info 1801 to DS track").ignore();
   if(!dsTrack.addInfo(1802,m_flags["findMatchingHits"]))Warning("Could not add info 1802 to DS track").ignore();
   if(!dsTrack.addInfo(1803,m_flags["fitXProjection"]))Warning("Could not add info 1803 to DS track").ignore();
@@ -622,7 +626,7 @@ StatusCode PrDebugUTTruthTool::writeExtraInfoToDownstreamTrack(LHCb::Track& dsTr
   if(!dsTrack.addInfo(1805,m_flags["fitAndRemove"]))Warning("Could not add info 1805 to DS track").ignore();
   if(!dsTrack.addInfo(1806,m_flags["acceptCandidate"]))Warning("Could not add info 1806 to DS track").ignore();
   if(!dsTrack.addInfo(1807,m_flags["beforeStore"]))Warning("Could not add info 1807 to DS track").ignore();
-  std::cout<<"writing extra info to downstream track. Test info(1801) = "<<dsTrack.info(1801,-999)<<std::endl;
+  //std::cout<<"writing extra info to downstream track. Test info(1801) = "<<dsTrack.info(1801,-999)<<std::endl;
   //next, categorize all the hits used in the downstream track.
   int n_good_x1(0),n_good_x2(0),n_good_u(0),n_good_v(0);
   int n_x1(0),n_x2(0),n_u(0),n_v(0);
@@ -667,8 +671,60 @@ StatusCode PrDebugUTTruthTool::writeExtraInfoToDownstreamTrack(LHCb::Track& dsTr
   return StatusCode::SUCCESS; 
 }
 
-StatusCode PrDebugUTTruthTool::writeExtraInfoToSeed(LHCb::Track& dTr, LHCb::Track& seed){
+StatusCode PrDebugUTTruthTool::writeExtraInfoToSeed(LHCb::Track& seed){
+
+  
+  if(!seed.addInfo(1801,m_flags["getPreSelection"]))Warning("Could not add info 1801 to DS track").ignore();
+  if(!seed.addInfo(1802,m_flags["findMatchingHits"]))Warning("Could not add info 1802 to DS track").ignore();
+  if(!seed.addInfo(1803,m_flags["fitXProjection"]))Warning("Could not add info 1803 to DS track").ignore();
+  if(!seed.addInfo(1804,m_flags["addUVHits"]))Warning("Could not add info 1804 to DS track").ignore();
+  if(!seed.addInfo(1805,m_flags["fitAndRemove"]))Warning("Could not add info 1805 to DS track").ignore();
+  if(!seed.addInfo(1806,m_flags["acceptCandidate"]))Warning("Could not add info 1806 to DS track").ignore();
+  if(!seed.addInfo(1807,m_flags["beforeStore"]))Warning("Could not add info 1807 to DS track").ignore();
+  //std::cout<<"writing extra info to seed track. Test info(1801) = "<<seed.info(1801,-999)<<std::endl;
+  //next, categorize all the hits used in the downstream track.
+  int n_good_x1(0),n_good_x2(0),n_good_u(0),n_good_v(0);
+  int n_x1(0),n_x2(0),n_u(0),n_v(0);
+  for(auto id: seed.lhcbIDs()){
+    //only categorize UT hits
+    if(!id.isUT())continue;
+    if(id.stID().station() == id.stID().layer()){//xhits
+      //goes as 
+      //x1 = station(1) layer(1)
+      //u  = station(1) layer(2)
+      //v  = station(2) layer(1)
+      //x2 = station(2) layer(2)
+      if(id.stID().station()==1){//x1
+        n_x1++;
+        if(m_x1_matching_map[id.lhcbID()])n_good_x1++;
+      }
+      if(id.stID().station()==2){//x2
+        n_x2++;
+        if(m_x2_matching_map[id.lhcbID()])n_good_x2++;
+      }
+    }
+    else{
+      if(id.stID().station()==1){//x1
+        n_u++;
+        if(m_u_matching_map[id.lhcbID()])n_good_u++;
+      }
+      if(id.stID().station()==2){//x2
+        n_v++;
+        if(m_v_matching_map[id.lhcbID()])n_good_v++;
+      }
+    }
+  }
+  if(!seed.addInfo(1900, n_good_x1))Warning("Couldn't add good x1 hits on track").ignore();
+  if(!seed.addInfo(1901, n_good_u))Warning("Couldn't add good u hits on track").ignore();
+  if(!seed.addInfo(1902, n_good_v))Warning("Couldn't add good v hits on track").ignore();
+  if(!seed.addInfo(1903, n_good_x2))Warning("Couldn't add good x2 hits on track").ignore();
+  if(!seed.addInfo(1904, n_x1))Warning("Couldn't add total x1 hits on track").ignore();
+  if(!seed.addInfo(1905, n_u))Warning("Couldn't add total u hits on track").ignore();
+  if(!seed.addInfo(1906, n_v))Warning("Couldn't add total v hits on track").ignore();
+  if(!seed.addInfo(1907, n_x2))Warning("Couldn't add total x2 hits on track").ignore();
+
   //first, get the information we wrote to the downstream track and write it to the seed.
+  /*
   if(!seed.addInfo(1801,dTr.info(1801,-9999)))Warning("Could not add info 1801 to DS track").ignore();
   if(!seed.addInfo(1802,dTr.info(1802,-9999)))Warning("Could not add info 1802 to DS track").ignore();
   if(!seed.addInfo(1803,dTr.info(1803,-9999)))Warning("Could not add info 1803 to DS track").ignore();
@@ -685,7 +741,37 @@ StatusCode PrDebugUTTruthTool::writeExtraInfoToSeed(LHCb::Track& dTr, LHCb::Trac
   if(!seed.addInfo(1905,dTr.info(1905,-9999)))Warning("Could not add info 1905 to DS track").ignore();
   if(!seed.addInfo(1906,dTr.info(1906,-9999)))Warning("Could not add info 1906 to DS track").ignore();
   if(!seed.addInfo(1907,dTr.info(1907,-9999)))Warning("Could not add info 1907 to DS track").ignore();
-  std::cout<<"writing extra info to seed. Test info(1801) = "<<seed.info(1801,-999)<<std::endl;
+  std::cout<<"writing extra info to seed. Test info(1801) = "<<seed.info(1801,-999)<<std::endl;*/
   // Now that all of that info is there, we can write the rest of the extra information.
+  
   return StatusCode::SUCCESS;
+}
+
+void PrDebugUTTruthTool::resetflags(){
+  m_flags["ReconstructibleAsLong"] = false;
+  m_flags["ReconstructibleAsDown"] = false;
+  m_flags["getPreSelection"] = false;
+  m_flags["findMatchingHits"] = false;
+  m_flags["fitXProjection"] = false;
+  m_flags["addUVHits"] = false;
+  m_flags["fitAndRemove"] = false;
+  m_flags["acceptCandidate"] = false;
+  m_flags["beforeStore"] = false;
+}
+
+
+void PrDebugUTTruthTool::ForceMCHits(PrUTHits& hits){
+  PrUTHits hits_new;
+  for(auto hit: hits){
+    if(m_x1_matching_map[hit->hit()->lhcbID().lhcbID()]==1||
+       m_u_matching_map[hit->hit()->lhcbID().lhcbID()]==1||
+       m_v_matching_map[hit->hit()->lhcbID().lhcbID()]==1||
+       m_x2_matching_map[hit->hit()->lhcbID().lhcbID()]==1){
+      hits_new.push_back(hit);
+    }
+  }
+  //have the new hits, so replace them.
+  hits.clear();
+  for(auto hit:hits_new){ hits.push_back(hit);}
+  return;
 }

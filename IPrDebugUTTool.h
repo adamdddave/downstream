@@ -41,11 +41,12 @@ public:
   //added by AD 4/28/15, for use with mika's tool.
     
   virtual void recordStepInProcess(std::string step, bool result) = 0;
-  
+
+  virtual void resetflags() = 0;  
 
   virtual StatusCode writeExtraInfoToDownstreamTrack(LHCb::Track& dsTrack) = 0;
 
-  virtual StatusCode writeExtraInfoToSeed(LHCb::Track& dTr, LHCb::Track& seed) = 0;
+  virtual StatusCode writeExtraInfoToSeed(LHCb::Track& seed) = 0;
 
   virtual bool isIDOnMCParticle(LHCb::LHCbID id, LHCb::Track& track) = 0;//ad
   
@@ -68,7 +69,8 @@ public:
                             LHCb::Track * track) = 0;
   virtual void PrintHitTable(PrUTHit* hit) = 0;
   virtual void PrintHitTableShort(const PrUTHit* hit) = 0;
-
+  virtual void ForceMCHits(PrUTHits& hits)=0;
+  
 
 protected:
 
