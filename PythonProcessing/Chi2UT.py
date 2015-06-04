@@ -1,6 +1,6 @@
 #!/usr/local/bin/python
 from ROOT import *
-import numpy,scipy
+import numpy#,scipy
 from math import *
 #from array import *
 class Chi2UT:
@@ -45,8 +45,11 @@ class Chi2UT:
         #print"***********************"
         
         self.hitx1.distPosition = self.hitx1.x
-        self.hitu.distPosition = self.hitu.xMin*self.hitu.cosTheta + self.hitu.yMin*self.hitu.sinTheta
-        self.hitv.distPosition = self.hitv.xMin*self.hitv.cosTheta + self.hitv.yMax*self.hitv.sinTheta#min and max to keep the orientation correct
+        #self.hitu.distPosition = self.hitu.xMin*self.hitu.cosTheta + self.hitu.yMin*self.hitu.sinTheta
+        #self.hitu.distPosition = self.hitu.xMin*self.hitu.cosTheta + self.hitu.yMax*self.hitu.sinTheta
+        self.hitu.distPosition = self.hitu.xMid*self.hitu.cosTheta + self.hitu.yMid*self.hitu.sinTheta
+        #self.hitv.distPosition = self.hitv.xMin*self.hitv.cosTheta + self.hitv.yMax*self.hitv.sinTheta#min and max to keep the orientation correct
+        self.hitv.distPosition = self.hitv.xMid*self.hitv.cosTheta + self.hitv.yMid*self.hitv.sinTheta#min and max to keep the orientation correct
         self.hitx2.distPosition = self.hitx2.x
         if True==smear:
             self.hitx1.distPosition+=numpy.random.normal(0.,varx1)
@@ -504,3 +507,18 @@ class Chi2UT:
         line_from_ut = self.finalParams[0]+self.finalParams[1]*z
 
         return line_from_ut - line_from_t
+
+    def get_delta_x_from_parameterization_of_tx(self):
+        x0fromBackofT = self.TSeed.Tend_X - self.TSeed.Tend_Z*self.TSeed.Tend_TX
+        p0 = 5393.
+        p1 = 11.36
+        p2 = 335.3
+        z = p0 + p1*self.TSeed.tx + p2*self.TSeed.tx
+        
+        line_from_t  = x0fromBackofT + self.TSeed.Tend_TX*z
+        line_from_ut = self.finalParams[0]+self.finalParams[1]*z
+
+        return line_from_ut - line_from_t
+    def get_delta_x_from_previous_magnetpos(self):
+        line_from_ut = self.finalParams[0]+ self.finalParams[1]*self.TSeed.preselZmag
+        return line_from_ut - self.TSeed.preselXmag

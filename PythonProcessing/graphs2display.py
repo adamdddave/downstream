@@ -3,13 +3,13 @@ from ROOT import *
 from array import array
 from HitInformation import *
 from math import *
-import numpy, scipy
+import numpy#, scipy
 class graphs2display:
     """
     this is the class which displays all of the graphs we would need
     the classes needed are Hit information, which has all the info from the hit
     and that's it.
-    Remeber, the first thing that the v plane will consider is xMax, then xmin, since it is a line like
+    Remeber, the first thing that the u plane will consider is xMax, then xmin, since it is a line like
     .
      .
       .
@@ -17,11 +17,20 @@ class graphs2display:
         .
     Otherwise things don't fall on the right line.
     """
-    def __init__(self,hitx1,hitu,hitv,hitx2):
-        self.x1=hitx1
-        self.x2=hitx2
-        self.u=hitu
-        self.v=hitv
+    def __init__(self,hits):
+        for hit in hits:
+            if hit.plane==0:
+                self.x1 = hit
+            if hit.plane==1:
+                self.u = hit
+            if hit.plane==2:
+                self.v = hit
+            if hit.plane==3:
+                self.x2 = hit
+        # self.x1=hitx1
+        # self.x2=hitx2
+        # self.u=hitu
+        # self.v=hitv
         #self.mcParticleP = particleP
     def set_counter_pave(self,counter):
         self.pt=TPaveText(0.1,0.1,0.8,0.9)
@@ -355,7 +364,7 @@ class graphs2display:
         self.val2 = 1./self.trueXZfittedYslope
         self.val3 = (-1* self.trueYZfittedYintercept / self.trueYZfittedYslope)
         self.val4 = 1. / self.trueYZfittedYslope
-        self.pt.AddText("#splitline{MC P = %f}{DS P est =%f}"%(self.mcParticleP,self.Tseed.dsP))
+        #self.pt.AddText("#splitline{MC P = %f}{DS P est =%f}"%(self.mcParticleP,self.Tseed.dsP))
         self.pt.AddText('True x_intercept %f'%self.val1)
         self.pt.AddText('True x_slope %f'%self.val2)
         self.pt.AddText('True y_intercept %f'%self.val3)

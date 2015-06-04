@@ -5,9 +5,10 @@ from array import array
 from HitInformation import *
 from graphs2display import*
 from Chi2UT import *
-#from FitComparer import *
+from FitComparer import *
 #from EventInspector import *
 import numpy
+from WindowTuner import *
 class ReadoutPresenter:
     """reads output for mike and makes a chi2 calculation
       Takes a chunk of text, imported as "chunk" and then gets the 
@@ -89,6 +90,8 @@ deltax_ut_tseed = TH1D("deltax_ut_tseed","#delta x_{Magnet} Between UT and FT;#d
 deltax_ut_tseed_atzmag = TH1D("deltax_ut_tseed_atzmag","#delta x_{Magnet} at z_{Magnet} Between UT and FT;#delta x_{Magnet}[mm]; Entries / 1 mm",100, -50, 50)
 deltax_ut_tseed_param = TH1D("deltax_ut_tseed_param","#delta x_{Magnet} Between UT and FT,parameterized;#delta x_{Magnet}[mm]; Entries / 1 mm",100, -50, 50)
 deltax_ut_tseed_param_take2 = TH1D("deltax_ut_tseed_param_take2","#delta x_{Magnet} Between UT and FT,parameterized with 1/p and tx;#delta x_{Magnet}[mm]; Entries / 1 mm",100, -50, 50)
+deltax_ut_original_magnet = TH1D("deltax_ut_original_magnet","#delta x_{Magnet} Between UT and FT,use original xMagnet;#delta x_{Magnet}[mm]; Entries / 1 mm",100, -50, 50)
+diff_between_front_and_back_tseed = TH1D("diff_between_front_and_back_tseed","tx difference between front and back fo t stations;(tx_{End T} - tx_{Begin T};Entries / 0.01)",100,-0.5,0.5)
 good_seed_counter=0
 while not found_good:
     
@@ -121,6 +124,7 @@ while not found_good:
         buffer = []
         for i in range(20):
             line = f.readline()#skip the zpost UT shiz, as well as the preselection info
+            buffer.append(line.strip('\n'))
             if good_seed_counter>1:
                 has_DS_momentum = False
             if 'moment' in line and has_DS_momentum==False:
@@ -133,7 +137,9 @@ while not found_good:
                 has_DS_momentum=True
             if 'zMagnet' in line:
                 z_magnet_old.Fill(float(line.split()[1]))
-
+        #print buffer
+        tinf.set_presel_info(buffer)
+        buffer = []
     if "Printing Table of Hit Information" in line and good_seed:
         #print 'getting hit parameters'
         line=f.readline()
@@ -210,6 +216,15 @@ while not found_good:
             #print "tseed mc momentum = %f"%partp
             
     if 'Looping on x hits' in line and good_seed:#instead of just looking for good hits, loop over all possibilities
+        #only do something if we have some hits
+        make_window_tuner=False
+        # if len(x12consider)>0 and len( x22consider)>0:
+        #     make_window_tuner=True
+        if make_window_tuner:
+            print 'Getting all hits: for %i x1, %i u, %i v and %i x2 hits'%(len(x12consider),len(u2consider),len(v2consider),len(x22consider))
+            wtr=WindowTuner(x12consider,u2consider,v2consider,x22consider,tinf)
+            wtr.makeGraphs()
+
         if mc_matched_hits_only == True:
             #print 'stripping down hits'
             #get rid of all the hits in the containers that aren't matched.
@@ -273,11 +288,11 @@ while not found_good:
             # a = x2hit
             
             ###HERE
-            #g2d=graphs2display(ax1,au,av,a)#,partp)
-            #g2d.set_counter_pave(ev_count)
-            #g2d.setTseedInfo(tinf)
-            #g2d.set_tseed_projections()
-            #g2d.make_x_y_z_projections()
+            # g2d=graphs2display(hitcombo)#,partp)
+            # g2d.set_counter_pave(ev_count)
+            # g2d.setTseedInfo(tinf)
+            # g2d.set_tseed_projections()
+            # g2d.make_x_y_z_projections()
             #g2d.save_curr_graph()
             #print "tseed ty = %f, tseed y = %f"%(g2d.TseedTy, g2d.TseedY)
             #do we want to calculate the chi2 and put it on the graph?
@@ -303,40 +318,40 @@ while not found_good:
                 chi2.calc_best_track()
                 chi2val = chi2.Chi2ForParams()
                 #print 'chi2val = %f'%chi2val
-            #print 'for extracted params'
-            #chi2.check_chi2_for_params(chi2.finalParams[0],chi2.finalParams[1],chi2.finalParams[2],chi2.finalParams[3])
-            #print 'for initial guess'
-            #chi2.check_chi2_for_guess()
-            #chi2.check_chi2_for_params(-10.296112,-0.031333,17.361532,-0.081736)
-            #print 'for truth'
+                #print 'for extracted params'
+                #chi2.check_chi2_for_params(chi2.finalParams[0],chi2.finalParams[1],chi2.finalParams[2],chi2.finalParams[3])
+                #print 'for initial guess'
+                #chi2.check_chi2_for_guess()
+                #chi2.check_chi2_for_params(-10.296112,-0.031333,17.361532,-0.081736)
+                #print 'for truth'
                 #chi2.check_chi2_for_params(g2d.val1,g2d.val2,g2d.val3,g2d.val4)
                 #             #chi2.check_chi2_for_true_vals()
-                #             curr_yplot = TF1("curr_xplot","[0]+[1]*x",g2d.mg.GetXaxis().GetXmin(),g2d.mg.GetXaxis().GetXmax())
-                #             curr_xplot = TF1("curr_yplot","[0]+[1]*x",g2d.mg2.GetXaxis().GetXmin(),g2d.mg2.GetXaxis().GetXmax())
-                #             #the parameters have to be inverted again to draw on the same graph
-                #             par1=-chi2.finalParams[0]/chi2.finalParams[1]
-                #             par2 = 1./chi2.finalParams[1]
-                #             par3=-chi2.finalParams[2]/chi2.finalParams[3]
-                #             par4 = 1./chi2.finalParams[3]
-                #             curr_xplot.SetParameters(par1,par2)
-                #             curr_yplot.SetParameters(par3,par4)
-                #             for plot in [curr_xplot,curr_yplot]:
-                #                 plot.SetLineColor(kGreen+2)
-                #                 plot.SetLineStyle(kDashed)
-                
-                #             g2d.c1.cd(1)
-                #             curr_yplot.Draw("lsame")
-                #             g2d.c1.Update()
-                #             g2d.c1.cd(2)
-                #             curr_xplot.Draw("lsame")
-                #             g2d.c1.cd(3)
-                #             g2d.leg.AddEntry(curr_xplot,"Fit from New #chi^{2}","l")
-                #             gPad.cd(1)
-                #             g2d.leg.Draw()
-                #             fc = FitComparer(chi2)
-                #             print 'MC Particle P = %f MeV, Downstream P = %f MeV '%(g2d.mcParticleP,g2d.Tseed.dsP)
-                #             fc.print_table()
-                #             g2d.c1.Update()
+                # curr_yplot = TF1("curr_xplot","[0]+[1]*x",g2d.mg.GetXaxis().GetXmin(),g2d.mg.GetXaxis().GetXmax())
+                # curr_xplot = TF1("curr_yplot","[0]+[1]*x",g2d.mg2.GetXaxis().GetXmin(),g2d.mg2.GetXaxis().GetXmax())
+                # #the parameters have to be inverted again to draw on the same graph
+                # par1=-chi2.finalParams[0]/chi2.finalParams[1]
+                # par2 = 1./chi2.finalParams[1]
+                # par3=-chi2.finalParams[2]/chi2.finalParams[3]
+                # par4 = 1./chi2.finalParams[3]
+                # curr_xplot.SetParameters(par1,par2)
+                # curr_yplot.SetParameters(par3,par4)
+                # for plot in [curr_xplot,curr_yplot]:
+                #     plot.SetLineColor(kGreen+2)
+                #     plot.SetLineStyle(kDashed)
+                    
+                # g2d.c1.cd(1)
+                # curr_yplot.Draw("lsame")
+                # g2d.c1.Update()
+                # g2d.c1.cd(2)
+                # curr_xplot.Draw("lsame")
+                # g2d.c1.cd(3)
+                # g2d.leg.AddEntry(curr_xplot,"Fit from New #chi^{2}","l")
+                # gPad.cd(1)
+                # g2d.leg.Draw()
+                # fc = FitComparer(chi2)
+                # #print 'MC Particle P = %f MeV, Downstream P = %f MeV '%(g2d.mcParticleP,g2d.Tseed.dsP)
+                # fc.print_table()
+                # g2d.c1.Update()
                 #g2d.save_curr_graph()
                 #chi2.check_chi2_for_params(-10.296112,-0.031333,17.361532,-0.081736)
                 #doIterate = raw_input('do another iteration? y / [n]')
@@ -361,11 +376,11 @@ while not found_good:
                         #if chi2.TSeed.mcP=>5e3 and chi2.TSeed.mcP<10e3:
                             
                         chi2_vs_delta_chi2.Fill(chi2val-chi2before,chi2val)
-                    #print 'delta chi2 = %f'%(chi2val-chi2before)
-                        par1=-chi2.finalParams[0]/chi2.finalParams[1]
-                        par2 = 1./chi2.finalParams[1]
-                        par3=-chi2.finalParams[2]/chi2.finalParams[3]
-                        par4 = 1./chi2.finalParams[3]
+                        #print 'delta chi2 = %f'%(chi2val-chi2before)
+                        # par1=-chi2.finalParams[0]/chi2.finalParams[1]
+                        # par2 = 1./chi2.finalParams[1]
+                        # par3=-chi2.finalParams[2]/chi2.finalParams[3]
+                        # par4 = 1./chi2.finalParams[3]
                         z_magnet.Fill(chi2.check_z_magnet_from_seed())
                         z_magnet_vs_tx.Fill(chi2.TSeed.Tend_TX,chi2.check_z_magnet_from_seed())
                         z_magnet_vs_ty.Fill(chi2.TSeed.Tend_TY,chi2.check_z_magnet_from_seed())
@@ -379,28 +394,30 @@ while not found_good:
                         deltax_ut_tseed_atzmag.Fill(chi2.get_delta_x_interept_for_truth(True))
                         deltax_ut_tseed_param.Fill(chi2.get_delta_x_from_parameterization())
                         deltax_ut_tseed_param_take2.Fill(chi2.get_delta_x_from_parameterization(True))
-                        #                     curr_xplot.SetParameters(par1,par2)
-                        #                     curr_yplot.SetParameters(par3,par4)
-                        #                     g2d.c1.cd(1)
-                        #                     curr_yplot.Draw("lsame")
-                        #                     g2d.c1.cd(2)
-                        #                     curr_xplot.Draw("lsame")
-                        #                     g2d.c1.Update()
-                        #fc = FitComparer(chi2)
-                        #                     fc.print_table()
-                        #                     g2d.c1.cd(3)
-                        #                     gPad.cd(3)
-                        #                     ptnew = TPaveText(0.1,0.1,0.8,0.9)
-                        #                     ptnew.SetFillColor(0)
-                        #                     ptnew.SetBorderSize(0)
-                        #                     ptnew.AddText ("new #chi^{2} = %f"%chi2val)
-                        #                     ptnew.Draw()
-                        #                     g2d.c1.Update()
-                        #                     g2d.save_curr_graph()
+                        deltax_ut_original_magnet.Fill(chi2.get_delta_x_from_previous_magnetpos())
+                        diff_between_front_and_back_tseed.Fill(chi2.TSeed.Tend_TX - chi2.TSeed.tx)
+                        #curr_xplot.SetParameters(par1,par2)
+                        #curr_yplot.SetParameters(par3,par4)
+                        # g2d.c1.cd(1)
+                        # curr_yplot.Draw("lsame")
+                        # g2d.c1.cd(2)
+                        # curr_xplot.Draw("lsame")
+                        # g2d.c1.Update()
+                        # fc = FitComparer(chi2)
+                        # fc.print_table()
+                        # g2d.c1.cd(3)
+                        # gPad.cd(3)
+                        # ptnew = TPaveText(0.1,0.1,0.8,0.9)
+                        # ptnew.SetFillColor(0)
+                        # ptnew.SetBorderSize(0)
+                        # ptnew.AddText ("new #chi^{2} = %f"%chi2val)
+                        # ptnew.Draw()
+                        # g2d.c1.Update()
+                        # g2d.save_curr_graph()
                         #
                         #if(chi2val>50):
                         #    ein = EventInspector(g2d,fc,par1,par2,par3,par4)
-                        #    doIterate = raw_input('do another iteration? y / [n]')
+                        #doIterate = raw_input('do another iteration? y / [n]')
                         #else:
                         #    doIterate = 'n'
                         
@@ -408,7 +425,7 @@ while not found_good:
             continue_hit_iterations = 'y'
             chi2_distribution.Fill(chi2val)
             good_seed = False
-#        move2next=raw_input('Move to next event? [y] / n')
+        #move2next=raw_input('Move to next event? [y] / n')
         move2next = 'y'
         if mc_matched_hits_only==False and ev_count > 300:
             #cut off at 300 combinations.
@@ -575,10 +592,24 @@ cfinal.SaveAs(saveName+"delta_xmagnet_param_with_tx"+typeName+"_logy.pdf")
 cfinal.SetLogy(False)
 
 cfinal.Clear()
+diff_between_front_and_back_tseed.Draw()
+cfinal.SaveAs(saveName+"diff_tx_back_front_tstation"+typeName+".pdf")
+cfinal.SetLogy(True)
+cfinal.SaveAs(saveName+"diff_tx_back_front_tstation"+typeName+"_logy.pdf")
+cfinal.SetLogy(False)
+
+cfinal.Clear()
 outfile= TFile(saveName+"zmag_vs_tx_vs_1overp.root","recreate")
 outfile.cd()
 z_magnet_vs_tx_vs_1overp.Write()
 outfile.Close()
+
+deltax_ut_original_magnet.Draw()
+cfinal.SaveAs(saveName+"diff_xmag_use_orig_magnet_pos"+typeName+".pdf")
+cfinal.SetLogy(True)
+cfinal.SaveAs(saveName+"diff_xmag_use_orig_magnet_pos"+typeName+"_logy.pdf")
+cfinal.SetLogy(False)
+cfinal.Clear()
 ###Print the chi2 for the last shiz.
 
 

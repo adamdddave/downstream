@@ -79,8 +79,15 @@ class TSeedInfo:
         self.Tend_TX = float((buffer[3].split())[2])
         self.Tend_TY = float((buffer[4].split())[2])
         #print 'in set tseed stuff, x=%f, y=%f,z=%f, tx=%f, ty=%f'%(self.Tend_X,self.Tend_Y,self.Tend_Z,self.Tend_TX,self.Tend_TY)
-    def setPreselInfo(self,buffer):
-        buf =  buffer
-        #first kill all the lines in the buffer that don't have the shit we want.
-        buf[:] = [line for line in buf if float((line.split())[2]1)]
-        print buf
+
+    def set_presel_info(self,buffer):
+        buf = []
+        #print buffer
+        for i in range(2,10):
+            buf.append(buffer[i])
+        #print buf
+        self.preselXmag = float((buf[0].split())[1])
+        self.preselYmag = float((buf[1].split())[1])
+        self.preselZmag = float((buf[2].split())[1])
+        self.preselTx   = float((buf[3].split())[1])
+        self.preselTy   = float((buf[4].split())[1])
