@@ -416,3 +416,27 @@ class graphs2display:
             self.c1.SaveAs('x_and_y_projections_ev%d.pdf'%self.evCounter)
         
     
+    def draw_mod_dist_pos(self,hits):
+        #rotate back to xy frame. Need u_y, which is second term
+        vhitpos = 0
+        x2hitpos=0
+        for hit in hits:
+            if hit.plane==2:
+                vhit = hit
+                print 'vhit distPosition = ',vhit.distPosition
+            if hit.plane==3:
+                x2hit = hit
+                print 'x2hit.distPosition = ',x2hit.distPosition
+        print 'v_x_modified = %f'%((vhit.distPosition*vhit.cosTheta - vhit.sinTheta*((-1)*vhit.sinTheta*vhit.xMid + vhit.cosTheta*vhit.yMid)))
+        print 'x2_modified = %f'%(x2hit.distPosition)
+        v_x_modified = ((vhit.distPosition*vhit.cosTheta - vhit.sinTheta*((-1)*vhit.sinTheta*vhit.xMid + vhit.cosTheta*vhit.yMid)))
+        x2_modified=(x2hit.distPosition)
+        
+        self.grMod = TGraph(2,
+                            array('f',[v_x_modified,x2_modified]),
+                            array('f',[vhit.zmid, x2hit.zmid]))
+        self.grMod.SetMarkerStyle(21)
+        self.grMod.SetMarkerColor(kRed)
+        self.mg2.Add(self.grMod)
+        self.c1.cd(2)
+        self.mg2.Draw('ap')

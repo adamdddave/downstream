@@ -13,6 +13,8 @@ class Chi2UT:
         2. Use the last parameters as a guess. May help convergence or number of iterations
         finally, using momentum corrections must be added to each step. Sets fine grain control
         5-5-15. Change constructor to list of hits.
+        6-7-15. Bug in the modifications of the position. We are oly really assuming x-bending,
+                but we adjust the entire v position. Corrected this to only account for v_x
         """
         for hit in hits:
             if hit.plane==0:
@@ -45,11 +47,8 @@ class Chi2UT:
         #print"***********************"
         
         self.hitx1.distPosition = self.hitx1.x
-        #self.hitu.distPosition = self.hitu.xMin*self.hitu.cosTheta + self.hitu.yMin*self.hitu.sinTheta
-        #self.hitu.distPosition = self.hitu.xMin*self.hitu.cosTheta + self.hitu.yMax*self.hitu.sinTheta
-        self.hitu.distPosition = self.hitu.xMid*self.hitu.cosTheta + self.hitu.yMid*self.hitu.sinTheta
-        #self.hitv.distPosition = self.hitv.xMin*self.hitv.cosTheta + self.hitv.yMax*self.hitv.sinTheta#min and max to keep the orientation correct
-        self.hitv.distPosition = self.hitv.xMid*self.hitv.cosTheta + self.hitv.yMid*self.hitv.sinTheta#min and max to keep the orientation correct
+        self.hitu.distPosition = self.hitu.xMin*self.hitu.cosTheta + self.hitu.yMin*self.hitu.sinTheta
+        self.hitv.distPosition = self.hitv.xMin*self.hitv.cosTheta + self.hitv.yMax*self.hitv.sinTheta#min and max to keep the orientation correct
         self.hitx2.distPosition = self.hitx2.x
         if True==smear:
             self.hitx1.distPosition+=numpy.random.normal(0.,varx1)
@@ -115,7 +114,8 @@ class Chi2UT:
         
 
     def modifyV_X2_positions(self):    
-        self.hitv.distPosition-= -0.00418*self.TSeed.dsQ+1309*self.TSeed.dsQ/self.TSeed.dsP
+        #self.hitv.distPosition-= -0.00418*self.TSeed.dsQ+1309*self.TSeed.dsQ/self.TSeed.dsP
+        self.hitv.distPosition = (self.hitv.xMin -(0.004214*self.TSeed.dsQ + 1312.5*self.TSeed.dsQ/self.TSeed.dsP))*self.hitv.cosTheta + self.hitv.yMax*self.hitv.sinTheta
         self.hitx2.distPosition-= -0.0062195*self.TSeed.dsQ+1843.*self.TSeed.dsQ/self.TSeed.dsP
         
     def set_WeightMatrixHitErrors(self,correctVX2errors=False):
