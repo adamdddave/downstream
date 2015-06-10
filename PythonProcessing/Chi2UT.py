@@ -69,6 +69,7 @@ class Chi2UT:
                                     [0.,       0.,          1.,       (self.zpUT)],
                                     [0.,       0.,          0.,       1.]])
         self.LHSmatrix = numpy.zeros(shape=(4,4))
+        ##TODO: add a check here which makes the hits the correct size.
         self.hits = [self.hitx1,self.hitu,self.hitv,self.hitx2]
         self.hitsRemoved = False
         #print insay
@@ -227,7 +228,7 @@ class Chi2UT:
         sigma_tyty = self.WeightMatrix[1][1]
         
         self.guessY = self.yT - self.tyT*self.zpUT + 0.001 #add an offset so that the cross terms aren't zero by construction
-        self.guessSY = self.tyT + 0.0001
+        self.guessSY = self.tyT #+ 0.0001
         #guess x and sx by fitting the hit positions.
         
         #self.guessSX = -(self.hitx2.distPosition - self.hitx1.distPosition)/(self.zx2-self.zx1)
@@ -272,23 +273,6 @@ class Chi2UT:
         
         for hit in self.hits:
             guessPosition = (self.guessX + self.guessSX*hit.zmid)*hit.cosTheta + (self.guessY + self.guessSY*hit.zmid)*hit.sinTheta 
-            
-#             if hit.plane==2:#v plane correction
-#                 #print'v plane test'
-#                 #print 'original position  = %f, guess_position = %f'%(hit.distPosition,guessPosition)
-#                      #alpha = 1341.5*self.hitx1.trueQoP
-#                 #alpha = 1341.5*self.TSeed.dsQ/self.TSeed.dsP
-#                 alpha = -0.00418*self.TSeed.dsQ+1309*self.TSeed.dsQ/self.TSeed.dsP
-#                 #print 'alpha = %f '%alpha
-#                 guessPosition-=alpha
-#             # if hit.plane==3:
-# #                 #alpha = 1890.*self.hitx1.trueQoP
-# #                 print'x2 plane test'
-# #                 print 'original position  = %f, guess_position = %f'%(hit.distPosition,guessPosition)
-# #                 alpha = -0.0062195*self.TSeed.dsQ+1843.*self.TSeed.dsQ/self.TSeed.dsP
-# #                 print 'alpha = %f '%alpha
-# #                 guessPosition-=alpha
-#             #sin theta kills off the non Y terms, and cosTheta = 1 for x terms
 
             self.RHSvector[0]+=(hit.distPosition-guessPosition)*hit.weight
             self.RHSvector[1]+=hit.zmid*(hit.distPosition - guessPosition)*hit.weight
@@ -522,3 +506,57 @@ class Chi2UT:
     def get_delta_x_from_previous_magnetpos(self):
         line_from_ut = self.finalParams[0]+ self.finalParams[1]*self.TSeed.preselZmag
         return line_from_ut - self.TSeed.preselXmag
+    def get_chi2_without_matrix(self):
+        #calculate the chi2 without using a matrix.
+        #should help for missing hits
+        hits2consider=[]
+        if True==self.hitsRemoved:
+            #find the missing hit
+            run_count = 0
+            hit2skip = ""
+            #index2delete = -1;
+            for hit in self.hits:
+                print 'looking at plane %i'%hit.plane
+                run_count+=hit.plane
+            if run_count==3:
+                print 'missing x2'
+                hit2skip = 'x2'
+                hits2consider = [self.hitx1,self.hitu,self.hitv]
+            if run_count==4:
+                print 'missing v'
+                hit2skip = 'v'
+                hits2consider = [self.hitx1,self.hitu,self.hitx2]
+            if run_count==5:
+                print 'missing u'
+                hit2skip = 'u'
+                hits2consider = [self.hitx1,self.hitv,self.hitx2]
+            if run_count==6:
+                print 'missing x1'
+                hit2skip = 'x1'
+                hits2consider = [self.hitu,self.hitv,self.hitx2]
+        else:
+            hits2consider = [self.hitx1,self.hitu,self.hitv,self.hitx2]
+        chi2val = 0.
+        for hit in hits2consider:
+            predval =( (self.finalParams[0]+hit.zmid*self.finalParams[1])*hit.cosTheta +
+                       (self.finalParams[1]+hit.zmid*self.finalParams[2])*hit.sinTheta)
+            weight = hit.weight
+            if hit.plane==2:
+                sigma_corr_v = 0.0070945 + 213.7/self.TSeed.dsP + 1.0178e6/self.TSeed.dsP/self.TSeed.dsP
+                weight = 1/(sigma_corr_v*sigma_corr_v)
+            if hit.plane==3:
+                sigma_corr_x2 = 0.009321 + 249.95/self.TSeed.dsP + 1.34e6/self.TSeed.dsP/self.TSeed.dsP
+                weight = 1/(sigma_corr_x2*sigma_corr_x2)
+            chi2val+= ((hit.distPosition - predval)**2)*weight
+
+        print 'chi2 of UT hits  = %f'%chi2val
+        #now do the weight matrix for the y positions
+        invErrMatrix = numpy.linalg.inv(self.errorMatrix)
+        vecY = numpy.array([self.yT - self.finalParams[1]+self.zpUT*self.finalParams[2],
+                            self.tyT - self.finalParams[2]])
+        half=numpy.dot(vecY,invErrMatrix)
+        full = numpy.dot(vecY.T,half)
+        #here. do the correct multiplication of the inverse of the covariance matrix.
+        print 'chi2 from hits = %f, chi2 from t seed  = %f'%(chi2val,full)
+        return chi2val+full
+            
